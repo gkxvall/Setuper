@@ -99,3 +99,29 @@ def test_init_command_returns_typed_validation_exit(
     assert captured.out == ""
     assert "ERROR [MANIFEST_VALIDATION]" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_list_command_renders_empty_and_sorted_results(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI lists setup names in repository order with a clear empty state."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert main(["list"], paths=paths) == 0
+    assert capsys.readouterr().out == "No setups found.\n"
+
+    second = tmp_path / "Zulu"
+    first = tmp_path / "Alpha"
+    second.mkdir()
+    first.mkdir()
+    assert main(["init", str(second)], paths=paths) == 0
+    assert main(["init", str(first)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert main(["list"], paths=paths) == 0
+    assert capsys.readouterr().out == "Alpha\nZulu\n"

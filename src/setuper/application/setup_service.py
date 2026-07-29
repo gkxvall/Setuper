@@ -97,6 +97,10 @@ class SetupService:
             ) from error
         return InitResult(manifest=manifest, manifest_path=manifest_path)
 
+    def list_setups(self) -> tuple[SetupRecord, ...]:
+        """Return stored setups in stable name order."""
+        return self._repository.list()
+
 
 def _utc_now() -> datetime:
     """Return the current aware UTC time."""

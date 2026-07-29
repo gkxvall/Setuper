@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("version", help="show the installed Setuper version")
+    subparsers.add_parser("list", help="list stored setups")
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -55,6 +56,8 @@ def main(
             return 0
         if arguments.command == "init":
             return _run_init(arguments.path, paths=paths)
+        if arguments.command == "list":
+            return _run_list(paths=paths)
     except SetuperError as error:
         print(f"ERROR [{error.error_code}] {error.message}", file=sys.stderr)
         return int(error.exit_code)
@@ -75,4 +78,22 @@ def _run_init(project_path: Path, *, paths: SetuperPaths | None) -> int:
     finally:
         connection.close()
     print(f"Initialized {result.manifest.name} at {result.manifest_path}")
+    return 0
+
+
+def _run_list(*, paths: SetuperPaths | None) -> int:
+    """Render stored setup names in stable order."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        records = SetupService(SetupRepository(connection)).list_setups()
+    finally:
+        connection.close()
+    if not records:
+        print("No setups found.")
+        return 0
+    for record in records:
+        print(record.name)
     return 0
