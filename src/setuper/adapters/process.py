@@ -5,7 +5,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import psutil
 from pydantic import JsonValue
@@ -15,6 +15,7 @@ from setuper.adapters.base import (
     CaptureContext,
     DetectedResource,
 )
+from setuper.adapters.ports import PortProvider, PsutilPortProvider
 from setuper.domain.enums import CaptureSupport, Platform
 from setuper.domain.errors import ManifestValidationError, UnsupportedPlatformError
 from setuper.domain.models import ResourceSpec
@@ -108,11 +109,13 @@ class ProcessAdapter(BaseResourceAdapter):
         self,
         provider: ProcessProvider | None = None,
         *,
+        port_provider: PortProvider | None = None,
         current_username: str | None = None,
         own_pid: int | None = None,
     ) -> None:
         """Create a process adapter with injectable system identity."""
         self._provider = provider or PsutilProcessProvider()
+        self._port_provider = port_provider or PsutilPortProvider()
         self._current_username = current_username or getpass.getuser()
         self._own_pid = own_pid or os.getpid()
 
@@ -122,6 +125,17 @@ class ProcessAdapter(BaseResourceAdapter):
             raise UnsupportedPlatformError(
                 f"Process detection is unsupported on: {context.platform.value}",
                 details={"platform": context.platform.value},
+            )
+        port_result = self._port_provider.detect_listeners()
+        ports_by_pid: dict[int, list[dict[str, JsonValue]]] = {}
+        for listener in port_result.listeners:
+            ports_by_pid.setdefault(listener.pid, []).append(
+                {
+                    "host": listener.host,
+                    "port": listener.port,
+                    "address_family": listener.address_family,
+                    "protocol": "tcp",
+                }
             )
         findings: list[DetectedResource] = []
         for process in self._provider.iter_processes():
@@ -142,6 +156,7 @@ class ProcessAdapter(BaseResourceAdapter):
                 warnings.append("Credential-like command arguments were redacted.")
             if not process.executable:
                 warnings.append("Executable path is unavailable.")
+            warnings.extend(port_result.warnings)
             config: dict[str, JsonValue] = {
                 "pid": process.pid,
                 "parent_pid": process.parent_pid,
@@ -154,6 +169,9 @@ class ProcessAdapter(BaseResourceAdapter):
                 config["cwd"] = process.working_directory
             if process.create_time is not None:
                 config["start_time"] = process.create_time
+            listening_ports = ports_by_pid.get(process.pid)
+            if listening_ports:
+                config["listening_ports"] = cast(JsonValue, listening_ports)
             display_name = process.name or (
                 Path(process.executable).name
                 if process.executable
