@@ -38,7 +38,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 ## Phase 3 — Capture system
 
 - [x] Define adapter interfaces and registry.
-- [ ] Implement process detection.
+- [x] Implement process detection.
 - [ ] Implement listening-port detection.
 - [ ] Implement Git detection.
 - [ ] Implement Docker detection.
