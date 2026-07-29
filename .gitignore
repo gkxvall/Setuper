@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version
+.venv/
+venv/
+
+# Build and test output
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+htmlcov/
+
+# Local Setuper runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log
