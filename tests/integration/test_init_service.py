@@ -233,3 +233,22 @@ def test_delete_removes_only_managed_clone_manifest(tmp_path: Path) -> None:
     assert result.manifest_deleted is True
     assert not clone.manifest_path.exists()
     assert (project / ".setuper.yaml").is_file()
+
+
+def test_export_writes_manifest_only_and_refuses_overwrite(tmp_path: Path) -> None:
+    """Export is deterministic and preserves an existing destination."""
+    project = tmp_path / "source"
+    project.mkdir()
+    service, _ = make_service(tmp_path)
+    initialized = service.init_project(project)
+    output = tmp_path / "Exports With Spaces" / "démo.yaml"
+
+    result = service.export_setup("source", output)
+
+    assert result.output_path == output.resolve()
+    assert load_manifest(output) == initialized.manifest
+    contents = output.read_text(encoding="utf-8")
+
+    with pytest.raises(ManifestValidationError):
+        service.export_setup("source", output)
+    assert output.read_text(encoding="utf-8") == contents

@@ -73,6 +73,14 @@ class DeleteResult:
     manifest_deleted: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ExportResult:
+    """Manifest exported without operational metadata or approvals."""
+
+    manifest: SetupManifest
+    output_path: Path
+
+
 class SetupService:
     """Coordinate setup manifests and their operational metadata."""
 
@@ -282,6 +290,18 @@ class SetupService:
                 details={"path": str(record.manifest_path), "name": record.name},
             ) from error
         return DeleteResult(record=record, manifest_deleted=True)
+
+    def export_setup(self, name: str, output_path: Path) -> ExportResult:
+        """Export one validated manifest without overwriting a destination."""
+        setup = self.show_setup(name)
+        destination = output_path.expanduser().resolve()
+        if os.path.lexists(destination):
+            raise ManifestValidationError(
+                f"Export destination already exists: {destination}",
+                details={"path": str(destination)},
+            )
+        save_manifest(destination, setup.manifest)
+        return ExportResult(manifest=setup.manifest, output_path=destination)
 
     def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""

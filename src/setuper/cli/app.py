@@ -63,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="delete without an interactive confirmation",
     )
+    export_parser = subparsers.add_parser(
+        "export",
+        help="export a setup manifest",
+    )
+    export_parser.add_argument("name", help="stored setup name")
+    export_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="new YAML output file",
+    )
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -118,6 +129,12 @@ def main(
             return _run_delete(
                 arguments.name,
                 assume_yes=arguments.yes,
+                paths=paths,
+            )
+        if arguments.command == "export":
+            return _run_export(
+                arguments.name,
+                arguments.output,
                 paths=paths,
             )
     except SetuperError as error:
@@ -277,3 +294,22 @@ def _confirm_delete(name: str) -> bool:
             "Delete confirmation unavailable; use --yes to confirm",
         ) from error
     return response.strip().lower() in {"y", "yes"}
+
+
+def _run_export(
+    name: str,
+    output: Path,
+    *,
+    paths: SetuperPaths | None,
+) -> int:
+    """Export one setup as a standalone validated YAML manifest."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).export_setup(name, output)
+    finally:
+        connection.close()
+    print(f"Exported {result.manifest.name} to {result.output_path}")
+    return 0

@@ -297,3 +297,32 @@ def test_delete_command_handles_unavailable_confirmation(
     assert captured.out == ""
     assert "use --yes to confirm" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_export_command_writes_standalone_yaml(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI exports a stored manifest to an explicit new file."""
+    project = tmp_path / "source"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    output = tmp_path / "transfer" / "source.yaml"
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            ["export", "source", "--output", str(output)],
+            paths=paths,
+        )
+        == 0
+    )
+
+    assert f"Exported source to {output}" in capsys.readouterr().out
+    assert output.is_file()
+    assert list(paths.manifest_directory.glob("*.yaml")) == []

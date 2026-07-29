@@ -127,3 +127,15 @@ from influencing filesystem traversal.
 
 **Consequence:** Clones are registered as local setups but receive no copied
 trust approval.
+
+## ADR-013 — Non-destructive export
+
+**Status:** Accepted
+
+**Decision:** Export writes only validated manifest YAML and refuses to overwrite
+an existing file or symlink.
+
+**Reason:** SQLite runtime metadata and local trust approvals are machine-local.
+Refusing replacement prevents an output typo from destroying an existing file.
+
+**Consequence:** Users must choose a new destination path for every export.
