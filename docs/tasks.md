@@ -8,7 +8,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Add Python `src/` package layout.
 - [x] Add `pyproject.toml`.
 - [x] Add license, README, changelog, contributing, code of conduct, and security policy.
-- [ ] Add Ruff, Mypy, Pytest, Coverage, and pre-commit configuration.
+- [x] Add Ruff, Mypy, Pytest, Coverage, and pre-commit configuration.
 - [ ] Add CI workflow.
 - [ ] Add a minimal root CLI and version command.
 
