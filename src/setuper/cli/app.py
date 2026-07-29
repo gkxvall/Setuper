@@ -9,6 +9,7 @@ from setuper import __version__
 from setuper.application.setup_service import SetupService
 from setuper.domain.errors import SetuperError
 from setuper.infrastructure.database import connect_database, run_migrations
+from setuper.infrastructure.manifests import serialize_manifest
 from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.paths import SetuperPaths, resolve_paths
 from setuper.infrastructure.setup_repository import SetupRepository
@@ -27,6 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("version", help="show the installed Setuper version")
     subparsers.add_parser("list", help="list stored setups")
+    show_parser = subparsers.add_parser("show", help="show full setup details")
+    show_parser.add_argument("name", help="stored setup name")
+    show_parser.add_argument(
+        "--portability",
+        action="store_true",
+        help="include the currently available portability assessment",
+    )
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -58,6 +66,12 @@ def main(
             return _run_init(arguments.path, paths=paths)
         if arguments.command == "list":
             return _run_list(paths=paths)
+        if arguments.command == "show":
+            return _run_show(
+                arguments.name,
+                portability=arguments.portability,
+                paths=paths,
+            )
     except SetuperError as error:
         print(f"ERROR [{error.error_code}] {error.message}", file=sys.stderr)
         return int(error.exit_code)
@@ -96,4 +110,28 @@ def _run_list(*, paths: SetuperPaths | None) -> int:
         return 0
     for record in records:
         print(record.name)
+    return 0
+
+
+def _run_show(
+    name: str,
+    *,
+    portability: bool,
+    paths: SetuperPaths | None,
+) -> int:
+    """Render one validated setup manifest and optional portability limits."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).show_setup(name)
+    finally:
+        connection.close()
+    print(serialize_manifest(result.manifest), end="")
+    if portability:
+        platforms = ", ".join(platform.value for platform in result.manifest.platforms)
+        print("\nPortability:")
+        print(f"  Declared platforms: {platforms}")
+        print("  Resource assessment: unavailable until adapter validation")
     return 0

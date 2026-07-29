@@ -98,12 +98,7 @@ def save_manifest(path: Path, manifest: SetupManifest) -> None:
     temporary_path: Path | None = None
     try:
         parent.mkdir(parents=True, exist_ok=True)
-        serialized = yaml.safe_dump(
-            manifest.model_dump(mode="json", exclude_none=True),
-            allow_unicode=True,
-            default_flow_style=False,
-            sort_keys=False,
-        )
+        serialized = serialize_manifest(manifest)
         file_descriptor, temporary_name = tempfile.mkstemp(
             dir=parent,
             prefix=f".{path.name}.",
@@ -126,6 +121,16 @@ def save_manifest(path: Path, manifest: SetupManifest) -> None:
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def serialize_manifest(manifest: SetupManifest) -> str:
+    """Serialize a validated manifest as deterministic readable YAML."""
+    return yaml.safe_dump(
+        manifest.model_dump(mode="json", exclude_none=True),
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+    )
 
 
 def _sync_directory(directory: Path) -> None:

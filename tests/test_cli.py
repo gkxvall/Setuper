@@ -125,3 +125,45 @@ def test_list_command_renders_empty_and_sorted_results(
 
     assert main(["list"], paths=paths) == 0
     assert capsys.readouterr().out == "Alpha\nZulu\n"
+
+
+def test_show_command_renders_validated_manifest_and_portability_limit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI shows manifest details and an honest adapter assessment fallback."""
+    project = tmp_path / "Démo"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert main(["show", "Démo", "--portability"], paths=paths) == 0
+
+    output = capsys.readouterr().out
+    assert "schema_version: 1" in output
+    assert "name: Démo" in output
+    assert "Declared platforms: macos" in output
+    assert "unavailable until adapter validation" in output
+
+
+def test_show_command_returns_not_found_exit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unknown setup returns the documented not-found exit code."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert main(["show", "missing"], paths=paths) == 4
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "ERROR [SETUP_NOT_FOUND]" in captured.err

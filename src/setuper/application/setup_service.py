@@ -15,7 +15,7 @@ from setuper.domain.errors import (
 )
 from setuper.domain.models import SetupManifest
 from setuper.infrastructure.hashing import hash_manifest
-from setuper.infrastructure.manifests import save_manifest
+from setuper.infrastructure.manifests import load_manifest, save_manifest
 from setuper.infrastructure.setup_repository import SetupRecord, SetupRepository
 
 PROJECT_MANIFEST_NAME = ".setuper.yaml"
@@ -27,6 +27,14 @@ class InitResult:
 
     manifest: SetupManifest
     manifest_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class ShowResult:
+    """Validated manifest and metadata selected by a stored setup name."""
+
+    manifest: SetupManifest
+    record: SetupRecord
 
 
 class SetupService:
@@ -100,6 +108,11 @@ class SetupService:
     def list_setups(self) -> tuple[SetupRecord, ...]:
         """Return stored setups in stable name order."""
         return self._repository.list()
+
+    def show_setup(self, name: str) -> ShowResult:
+        """Load and validate the manifest registered for one setup."""
+        record = self._repository.get_by_name(name)
+        return ShowResult(manifest=load_manifest(record.manifest_path), record=record)
 
 
 def _utc_now() -> datetime:

@@ -6,7 +6,11 @@ import pytest
 
 from setuper.domain.errors import ManifestIOError, ManifestValidationError
 from setuper.domain.models import ResourceSpec, SetupManifest
-from setuper.infrastructure.manifests import load_manifest, save_manifest
+from setuper.infrastructure.manifests import (
+    load_manifest,
+    save_manifest,
+    serialize_manifest,
+)
 
 
 def test_manifest_round_trip_is_readable_and_deterministic(tmp_path: Path) -> None:
@@ -32,6 +36,16 @@ def test_manifest_round_trip_is_readable_and_deterministic(tmp_path: Path) -> No
     assert manifest_path.read_text(encoding="utf-8") == first_contents
     assert "développement" in first_contents
     assert "!!python" not in first_contents
+
+
+def test_manifest_serialization_matches_persisted_yaml(tmp_path: Path) -> None:
+    """In-memory rendering uses the exact safe persistence representation."""
+    manifest = SetupManifest(name="workspace")
+    manifest_path = tmp_path / "workspace.yaml"
+
+    save_manifest(manifest_path, manifest)
+
+    assert serialize_manifest(manifest) == manifest_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
