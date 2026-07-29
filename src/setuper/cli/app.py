@@ -53,6 +53,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rename_parser.add_argument("old", help="current setup name")
     rename_parser.add_argument("new", help="new setup name")
+    delete_parser = subparsers.add_parser(
+        "delete",
+        help="delete a stored setup",
+    )
+    delete_parser.add_argument("name", help="stored setup name")
+    delete_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="delete without an interactive confirmation",
+    )
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -102,6 +112,12 @@ def main(
             return _run_rename(
                 arguments.old,
                 arguments.new,
+                paths=paths,
+            )
+        if arguments.command == "delete":
+            return _run_delete(
+                arguments.name,
+                assume_yes=arguments.yes,
                 paths=paths,
             )
     except SetuperError as error:
@@ -223,3 +239,41 @@ def _run_rename(
         connection.close()
     print(f"Renamed {old} as {result.manifest.name}")
     return 0
+
+
+def _run_delete(
+    name: str,
+    *,
+    assume_yes: bool,
+    paths: SetuperPaths | None,
+) -> int:
+    """Confirm and delete one setup without deleting user-owned projects."""
+    if not assume_yes and not _confirm_delete(name):
+        print("Delete cancelled.")
+        return 0
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).delete_setup(
+            name,
+            active_paths.manifest_directory,
+        )
+    finally:
+        connection.close()
+    print(f"Deleted {result.record.name}.")
+    if not result.manifest_deleted:
+        print(f"Preserved manifest at {result.record.manifest_path}")
+    return 0
+
+
+def _confirm_delete(name: str) -> bool:
+    """Read one conservative interactive delete confirmation."""
+    try:
+        response = input(f"Delete setup {name!r}? [y/N] ")
+    except EOFError as error:
+        raise SetuperError(
+            "Delete confirmation unavailable; use --yes to confirm",
+        ) from error
+    return response.strip().lower() in {"y", "yes"}

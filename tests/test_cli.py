@@ -245,3 +245,55 @@ def test_rename_command_updates_future_lookup(
     assert main(["show", "renamed"], paths=paths) == 0
     assert "name: renamed" in capsys.readouterr().out
     assert main(["show", "source"], paths=paths) == 4
+
+
+def test_delete_command_requires_confirmation_and_preserves_project_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI cancels by default and preserves project-owned manifests."""
+    project = tmp_path / "source"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+    monkeypatch.setattr("builtins.input", lambda prompt: "")
+
+    assert main(["delete", "source"], paths=paths) == 0
+    assert capsys.readouterr().out == "Delete cancelled.\n"
+    assert main(["delete", "source", "--yes"], paths=paths) == 0
+
+    output = capsys.readouterr().out
+    assert "Deleted source." in output
+    assert "Preserved manifest" in output
+    assert (project / ".setuper.yaml").is_file()
+
+
+def test_delete_command_handles_unavailable_confirmation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Noninteractive stdin returns an actionable error instead of a traceback."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    def end_of_input(prompt: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", end_of_input)
+
+    assert main(["delete", "source"], paths=paths) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "use --yes to confirm" in captured.err
+    assert "Traceback" not in captured.err

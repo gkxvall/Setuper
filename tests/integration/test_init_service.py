@@ -8,7 +8,11 @@ import pytest
 
 from setuper.application.setup_service import SetupService
 from setuper.domain.enums import SetupSource
-from setuper.domain.errors import ManifestIOError, ManifestValidationError
+from setuper.domain.errors import (
+    ManifestIOError,
+    ManifestValidationError,
+    SetupNotFoundError,
+)
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.hashing import hash_manifest
 from setuper.infrastructure.manifests import load_manifest
@@ -191,3 +195,41 @@ def test_rename_refuses_existing_target_without_changing_source(
         service.rename_setup("first", "second")
 
     assert original.manifest_path.read_text(encoding="utf-8") == contents
+
+
+def test_delete_preserves_project_manifest_and_removes_registration(
+    tmp_path: Path,
+) -> None:
+    """Project-owned manifests survive metadata deletion."""
+    project = tmp_path / "project"
+    project.mkdir()
+    service, repository = make_service(tmp_path)
+    initialized = service.init_project(project)
+
+    result = service.delete_setup("project", tmp_path / "managed")
+
+    assert result.manifest_deleted is False
+    assert initialized.manifest_path.is_file()
+    with pytest.raises(SetupNotFoundError):
+        repository.get_by_name("project")
+
+
+def test_delete_removes_only_managed_clone_manifest(tmp_path: Path) -> None:
+    """A cloned manifest inside managed storage is removed with its metadata."""
+    project = tmp_path / "source"
+    project.mkdir()
+    service, repository = make_service(tmp_path)
+    service.init_project(project)
+    clone_service = SetupService(
+        repository,
+        id_factory=lambda: CLONE_ID,
+        clock=lambda: NOW,
+    )
+    managed = tmp_path / "managed"
+    clone = clone_service.clone_setup("source", "clone", managed)
+
+    result = clone_service.delete_setup("clone", managed)
+
+    assert result.manifest_deleted is True
+    assert not clone.manifest_path.exists()
+    assert (project / ".setuper.yaml").is_file()

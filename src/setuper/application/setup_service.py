@@ -65,6 +65,14 @@ class RenameResult:
     manifest_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class DeleteResult:
+    """Deleted setup metadata and manifest ownership outcome."""
+
+    record: SetupRecord
+    manifest_deleted: bool
+
+
 class SetupService:
     """Coordinate setup manifests and their operational metadata."""
 
@@ -253,6 +261,28 @@ class SetupService:
             manifest_path=current.record.manifest_path,
         )
 
+    def delete_setup(
+        self,
+        name: str,
+        manifest_directory: Path,
+    ) -> DeleteResult:
+        """Delete metadata and only a Setuper-owned manifest file."""
+        record = self._repository.delete(name)
+        if record.source is SetupSource.PROJECT or not _is_managed_manifest(
+            record,
+            manifest_directory,
+        ):
+            return DeleteResult(record=record, manifest_deleted=False)
+        try:
+            record.manifest_path.unlink(missing_ok=True)
+        except OSError as error:
+            raise ManifestIOError(
+                f"Setup metadata deleted but manifest removal failed: "
+                f"{record.manifest_path}",
+                details={"path": str(record.manifest_path), "name": record.name},
+            ) from error
+        return DeleteResult(record=record, manifest_deleted=True)
+
     def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""
         try:
@@ -274,3 +304,18 @@ class SetupService:
 def _utc_now() -> datetime:
     """Return the current aware UTC time."""
     return datetime.now(UTC)
+
+
+def _is_managed_manifest(
+    record: SetupRecord,
+    manifest_directory: Path,
+) -> bool:
+    """Return whether a regular UUID manifest is directly in managed storage."""
+    try:
+        return (
+            record.manifest_path.parent == manifest_directory.resolve()
+            and record.manifest_path.name == f"{record.id}.yaml"
+            and not record.manifest_path.is_symlink()
+        )
+    except OSError:
+        return False
