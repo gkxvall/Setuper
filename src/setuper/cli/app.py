@@ -41,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="edit a setup manifest in the configured editor",
     )
     edit_parser.add_argument("name", help="stored setup name")
+    clone_parser = subparsers.add_parser(
+        "clone",
+        help="clone a stored setup under a new name",
+    )
+    clone_parser.add_argument("source", help="source setup name")
+    clone_parser.add_argument("target", help="new setup name")
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -80,6 +86,12 @@ def main(
             )
         if arguments.command == "edit":
             return _run_edit(arguments.name, paths=paths)
+        if arguments.command == "clone":
+            return _run_clone(
+                arguments.source,
+                arguments.target,
+                paths=paths,
+            )
     except SetuperError as error:
         print(f"ERROR [{error.error_code}] {error.message}", file=sys.stderr)
         return int(error.exit_code)
@@ -156,4 +168,27 @@ def _run_edit(name: str, *, paths: SetuperPaths | None) -> int:
     finally:
         connection.close()
     print(f"Updated {result.manifest.name} at {result.manifest_path}")
+    return 0
+
+
+def _run_clone(
+    source: str,
+    target: str,
+    *,
+    paths: SetuperPaths | None,
+) -> int:
+    """Clone one setup into Setuper-owned manifest storage."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).clone_setup(
+            source,
+            target,
+            active_paths.manifest_directory,
+        )
+    finally:
+        connection.close()
+    print(f"Cloned {source} as {result.manifest.name} at {result.manifest_path}")
     return 0

@@ -16,6 +16,7 @@ from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.setup_repository import SetupRepository
 
 SETUP_ID = UUID("e84b8d08-e05d-49de-a7ab-4e38f919eb89")
+CLONE_ID = UUID("8242489f-4611-4870-8cf5-13aecafd62e6")
 NOW = datetime(2026, 7, 29, 12, tzinfo=UTC)
 
 
@@ -116,3 +117,32 @@ def test_edit_validates_before_atomically_replacing_manifest(tmp_path: Path) -> 
         service.edit_setup("workspace", change_name)
     assert initialized.manifest_path.read_text(encoding="utf-8") == contents
     assert not list(project.glob(".*.edit.*.yaml"))
+
+
+def test_clone_creates_new_local_identity_without_overwriting(tmp_path: Path) -> None:
+    """Clones preserve content but receive independent metadata and storage."""
+    project = tmp_path / "source"
+    project.mkdir()
+    service, repository = make_service(tmp_path)
+    source = service.init_project(project)
+    clone_service = SetupService(
+        repository,
+        id_factory=lambda: CLONE_ID,
+        clock=lambda: NOW,
+    )
+    manifest_directory = tmp_path / "managed setups"
+
+    result = clone_service.clone_setup("source", "target copy", manifest_directory)
+
+    assert result.manifest.name == "target copy"
+    assert result.manifest.id == CLONE_ID
+    assert result.manifest.id != source.manifest.id
+    assert result.manifest_path.parent == manifest_directory.resolve()
+    assert result.manifest_path.name == f"{result.manifest.id}.yaml"
+    record = repository.get_by_name("target copy")
+    assert record.source is SetupSource.LOCAL
+    assert record.manifest_hash == hash_manifest(result.manifest_path)
+
+    with pytest.raises(ManifestValidationError):
+        clone_service.clone_setup("source", "target copy", manifest_directory)
+    assert len(list(manifest_directory.glob("*.yaml"))) == 1

@@ -8,11 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from setuper.domain.enums import Platform, SetupSource
 from setuper.domain.errors import (
     DatabaseError,
     ManifestIOError,
     ManifestValidationError,
+    SetupNotFoundError,
 )
 from setuper.domain.models import SetupManifest
 from setuper.infrastructure.hashing import hash_manifest
@@ -41,6 +44,14 @@ class ShowResult:
 @dataclass(frozen=True, slots=True)
 class EditResult:
     """Validated setup committed after a successful editor session."""
+
+    manifest: SetupManifest
+    manifest_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class CloneResult:
+    """New independently identified setup cloned from a stored manifest."""
 
     manifest: SetupManifest
     manifest_path: Path
@@ -165,6 +176,64 @@ class SetupService:
                 details={"path": str(record.manifest_path), "name": record.name},
             ) from error
         return EditResult(manifest=edited, manifest_path=record.manifest_path)
+
+    def clone_setup(
+        self,
+        source_name: str,
+        target_name: str,
+        manifest_directory: Path,
+    ) -> CloneResult:
+        """Clone a setup under a new identity without copying trust."""
+        self._require_available_name(target_name)
+        source = self.show_setup(source_name)
+        setup_id = self._id_factory()
+        cloned = SetupManifest.model_validate(
+            {
+                **source.manifest.model_dump(mode="python"),
+                "id": setup_id,
+                "name": target_name,
+            }
+        )
+        manifest_path = manifest_directory.resolve() / f"{setup_id}.yaml"
+        if os.path.lexists(manifest_path):
+            raise ManifestValidationError(
+                f"Clone destination already exists: {manifest_path}",
+                details={"path": str(manifest_path)},
+            )
+        save_manifest(manifest_path, cloned)
+        timestamp = self._clock()
+        record = SetupRecord(
+            id=setup_id,
+            name=cloned.name,
+            manifest_path=manifest_path,
+            manifest_hash=hash_manifest(manifest_path),
+            source=SetupSource.LOCAL,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        try:
+            self._repository.create(record)
+        except DatabaseError:
+            manifest_path.unlink(missing_ok=True)
+            raise
+        return CloneResult(manifest=cloned, manifest_path=manifest_path)
+
+    def _require_available_name(self, name: str) -> None:
+        """Reject an invalid or already stored setup name."""
+        try:
+            validated = SetupManifest(name=name).name
+        except ValidationError as error:
+            raise ManifestValidationError(
+                "Setup name must not be empty",
+            ) from error
+        try:
+            self._repository.get_by_name(validated)
+        except SetupNotFoundError:
+            return
+        raise ManifestValidationError(
+            f"Setup name already exists: {validated}",
+            details={"name": validated},
+        )
 
 
 def _utc_now() -> datetime:

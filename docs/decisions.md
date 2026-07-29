@@ -113,3 +113,17 @@ source of truth from partial or invalid editor writes.
 
 **Consequence:** Renaming is reserved for `setuper rename`; users on non-macOS
 systems must configure `$VISUAL` or `$EDITOR`.
+
+## ADR-012 — Managed clone storage
+
+**Status:** Accepted
+
+**Decision:** Cloned setups receive a new UUID and are stored as
+`<data-directory>/setups/<uuid>.yaml`.
+
+**Reason:** The clone command accepts a setup name rather than a destination
+path. UUID filenames keep names with spaces and Unicode safe and prevent names
+from influencing filesystem traversal.
+
+**Consequence:** Clones are registered as local setups but receive no copied
+trust approval.

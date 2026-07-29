@@ -200,3 +200,26 @@ def test_edit_command_updates_manifest_through_editor(
     assert "description: From editor" in (project / ".setuper.yaml").read_text(
         encoding="utf-8"
     )
+
+
+def test_clone_command_creates_independent_managed_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI clones a stored setup into its managed manifest directory."""
+    project = tmp_path / "source"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert main(["clone", "source", "target copy"], paths=paths) == 0
+
+    assert "Cloned source as target copy" in capsys.readouterr().out
+    cloned_files = list(paths.manifest_directory.glob("*.yaml"))
+    assert len(cloned_files) == 1
+    assert "name: target copy" in cloned_files[0].read_text(encoding="utf-8")
