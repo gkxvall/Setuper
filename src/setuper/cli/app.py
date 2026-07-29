@@ -7,6 +7,7 @@ from pathlib import Path
 
 from setuper import __version__
 from setuper.application.setup_service import SetupService
+from setuper.cli.json_output import render_json_error, render_json_success
 from setuper.domain.errors import SetuperError
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.editor import open_editor
@@ -28,9 +29,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("version", help="show the installed Setuper version")
-    subparsers.add_parser("list", help="list stored setups")
+    list_parser = subparsers.add_parser("list", help="list stored setups")
+    list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a deterministic JSON envelope",
+    )
     show_parser = subparsers.add_parser("show", help="show full setup details")
     show_parser.add_argument("name", help="stored setup name")
+    show_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a deterministic JSON envelope",
+    )
     show_parser.add_argument(
         "--portability",
         action="store_true",
@@ -113,11 +124,12 @@ def main(
         if arguments.command == "init":
             return _run_init(arguments.path, paths=paths)
         if arguments.command == "list":
-            return _run_list(paths=paths)
+            return _run_list(json_output=arguments.json, paths=paths)
         if arguments.command == "show":
             return _run_show(
                 arguments.name,
                 portability=arguments.portability,
+                json_output=arguments.json,
                 paths=paths,
             )
         if arguments.command == "edit":
@@ -153,6 +165,9 @@ def main(
                 paths=paths,
             )
     except SetuperError as error:
+        if getattr(arguments, "json", False):
+            print(render_json_error(arguments.command, error))
+            return int(error.exit_code)
         print(f"ERROR [{error.error_code}] {error.message}", file=sys.stderr)
         return int(error.exit_code)
 
@@ -175,7 +190,11 @@ def _run_init(project_path: Path, *, paths: SetuperPaths | None) -> int:
     return 0
 
 
-def _run_list(*, paths: SetuperPaths | None) -> int:
+def _run_list(
+    *,
+    json_output: bool,
+    paths: SetuperPaths | None,
+) -> int:
     """Render stored setup names in stable order."""
     active_paths = paths or resolve_paths()
     active_paths.ensure_directories()
@@ -185,6 +204,27 @@ def _run_list(*, paths: SetuperPaths | None) -> int:
         records = SetupService(SetupRepository(connection)).list_setups()
     finally:
         connection.close()
+    if json_output:
+        print(
+            render_json_success(
+                "list",
+                {
+                    "setups": [
+                        {
+                            "id": record.id,
+                            "name": record.name,
+                            "source": record.source,
+                            "manifest_path": record.manifest_path,
+                            "manifest_hash": record.manifest_hash,
+                            "created_at": record.created_at,
+                            "updated_at": record.updated_at,
+                        }
+                        for record in records
+                    ]
+                },
+            )
+        )
+        return 0
     if not records:
         print("No setups found.")
         return 0
@@ -197,6 +237,7 @@ def _run_show(
     name: str,
     *,
     portability: bool,
+    json_output: bool,
     paths: SetuperPaths | None,
 ) -> int:
     """Render one validated setup manifest and optional portability limits."""
@@ -208,6 +249,35 @@ def _run_show(
         result = SetupService(SetupRepository(connection)).show_setup(name)
     finally:
         connection.close()
+    if json_output:
+        portability_data: dict[str, object] | None = None
+        warnings: tuple[str, ...] = ()
+        if portability:
+            portability_data = {
+                "declared_platforms": result.manifest.platforms,
+                "resource_assessment": {
+                    "available": False,
+                    "reason": "unavailable until adapter validation",
+                },
+            }
+            warnings = ("Resource portability requires adapter validation.",)
+        print(
+            render_json_success(
+                "show",
+                {
+                    "manifest": result.manifest.model_dump(
+                        mode="json",
+                        exclude_none=True,
+                    ),
+                    "manifest_path": result.record.manifest_path,
+                    "manifest_hash": result.record.manifest_hash,
+                    "source": result.record.source,
+                    "portability": portability_data,
+                },
+                warnings=warnings,
+            )
+        )
+        return 0
     print(serialize_manifest(result.manifest), end="")
     if portability:
         platforms = ", ".join(platform.value for platform in result.manifest.platforms)

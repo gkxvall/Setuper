@@ -1,5 +1,6 @@
 """Tests for the minimal command-line interface."""
 
+import json
 import runpy
 import subprocess
 import sys
@@ -356,3 +357,87 @@ def test_import_command_registers_untrusted_manifest_with_name_override(
     assert "Trust: untrusted" in output
     assert len(list(paths.manifest_directory.glob("*.yaml"))) == 1
     assert main(["show", "Imported Setup"], paths=paths) == 0
+
+
+def test_list_json_returns_stable_setup_summaries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """List JSON uses the documented envelope and stable repository order."""
+    project = tmp_path / "Démo"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert main(["list", "--json"], paths=paths) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["command"] == "list"
+    assert payload["warnings"] == []
+    assert payload["data"]["setups"][0]["name"] == "Démo"
+    assert payload["data"]["setups"][0]["source"] == "project"
+
+
+def test_show_json_reports_portability_limit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Show JSON keeps manifest data structured and limitations explicit."""
+    project = tmp_path / "workspace"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert (
+        main(
+            ["show", "workspace", "--json", "--portability"],
+            paths=paths,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["data"]["manifest"]["name"] == "workspace"
+    assert payload["data"]["portability"]["resource_assessment"] == {
+        "available": False,
+        "reason": "unavailable until adapter validation",
+    }
+    assert payload["warnings"] == ["Resource portability requires adapter validation."]
+
+
+def test_show_json_returns_structured_typed_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """JSON failures remain one stdout object with the documented exit code."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert main(["show", "missing", "--json"], paths=paths) == 4
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload == {
+        "ok": False,
+        "command": "show",
+        "error": {
+            "code": "SETUP_NOT_FOUND",
+            "message": "Setup not found: missing",
+            "details": {"name": "missing"},
+        },
+    }
+    assert captured.err == ""
