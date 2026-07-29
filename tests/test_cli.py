@@ -4,15 +4,20 @@ import json
 import runpy
 import subprocess
 import sys
+from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
 from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
+from setuper.domain.enums import LaunchStatus
 from setuper.domain.models import SetupManifest
-from setuper.infrastructure.manifests import save_manifest
+from setuper.infrastructure.database import connect_database
+from setuper.infrastructure.launch_repository import LaunchRecord, LaunchRepository
+from setuper.infrastructure.manifests import load_manifest, save_manifest
 from setuper.infrastructure.paths import SetuperPaths
 
 
@@ -126,9 +131,27 @@ def test_list_command_renders_empty_and_sorted_results(
     assert main(["init", str(second)], paths=paths) == 0
     assert main(["init", str(first)], paths=paths) == 0
     capsys.readouterr()
+    alpha_manifest = load_manifest(first / ".setuper.yaml")
+    assert alpha_manifest.id is not None
+    with connect_database(paths.database_path) as connection:
+        LaunchRepository(connection).create_launch(
+            LaunchRecord(
+                id=UUID("30ad2e7e-0774-48e1-a93a-5b566bbdcac1"),
+                setup_id=alpha_manifest.id,
+                manifest_hash="a" * 64,
+                profile=None,
+                status=LaunchStatus.STOPPED,
+                started_at=datetime(2026, 7, 29, 12, 34, tzinfo=UTC),
+            )
+        )
 
     assert main(["list"], paths=paths) == 0
-    assert capsys.readouterr().out == "Alpha\nZulu\n"
+    output = capsys.readouterr().out
+    assert output.splitlines() == [
+        "NAME   RESOURCES  LAST LAUNCHED     STATUS",
+        "Alpha  0          2026-07-29 12:34  stopped",
+        "Zulu   0          never             -",
+    ]
 
 
 def test_show_command_renders_validated_manifest_and_portability_limit(
@@ -382,6 +405,9 @@ def test_list_json_returns_stable_setup_summaries(
     assert payload["warnings"] == []
     assert payload["data"]["setups"][0]["name"] == "Démo"
     assert payload["data"]["setups"][0]["source"] == "project"
+    assert payload["data"]["setups"][0]["resource_count"] == 0
+    assert payload["data"]["setups"][0]["last_launched_at"] is None
+    assert payload["data"]["setups"][0]["status"] is None
 
 
 def test_show_json_reports_portability_limit(

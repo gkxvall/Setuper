@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
-from setuper.domain.enums import Platform, SetupSource
+from setuper.domain.enums import LaunchStatus, Platform, SetupSource
 from setuper.domain.errors import (
     DatabaseError,
     ManifestIOError,
@@ -19,6 +19,7 @@ from setuper.domain.errors import (
 )
 from setuper.domain.models import SetupManifest
 from setuper.infrastructure.hashing import hash_manifest
+from setuper.infrastructure.launch_repository import LaunchRepository
 from setuper.infrastructure.manifests import load_manifest, save_manifest
 from setuper.infrastructure.setup_repository import SetupRecord, SetupRepository
 
@@ -31,6 +32,16 @@ class InitResult:
 
     manifest: SetupManifest
     manifest_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class SetupSummary:
+    """Stored setup details required by list renderers."""
+
+    record: SetupRecord
+    resource_count: int
+    last_launched_at: datetime | None
+    status: LaunchStatus | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,11 +108,13 @@ class SetupService:
         self,
         repository: SetupRepository,
         *,
+        launch_repository: LaunchRepository | None = None,
         id_factory: Callable[[], UUID] = uuid4,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Create a setup service with injectable identity and time sources."""
         self._repository = repository
+        self._launch_repository = launch_repository
         self._id_factory = id_factory
         self._clock = clock or _utc_now
 
@@ -158,9 +171,25 @@ class SetupService:
             ) from error
         return InitResult(manifest=manifest, manifest_path=manifest_path)
 
-    def list_setups(self) -> tuple[SetupRecord, ...]:
-        """Return stored setups in stable name order."""
-        return self._repository.list()
+    def list_setups(self) -> tuple[SetupSummary, ...]:
+        """Return stored setup summaries in stable name order."""
+        if self._launch_repository is None:
+            raise DatabaseError("Launch repository is required to list setups")
+        summaries: list[SetupSummary] = []
+        for record in self._repository.list():
+            manifest = load_manifest(record.manifest_path)
+            latest_launch = self._launch_repository.latest_for_setup(record.id)
+            summaries.append(
+                SetupSummary(
+                    record=record,
+                    resource_count=len(manifest.resources),
+                    last_launched_at=(
+                        None if latest_launch is None else latest_launch.started_at
+                    ),
+                    status=None if latest_launch is None else latest_launch.status,
+                )
+            )
+        return tuple(summaries)
 
     def show_setup(self, name: str) -> ShowResult:
         """Load and validate the manifest registered for one setup."""

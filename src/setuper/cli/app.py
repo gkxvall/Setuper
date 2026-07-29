@@ -11,6 +11,7 @@ from setuper.cli.json_output import render_json_error, render_json_success
 from setuper.domain.errors import SetuperError
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.editor import open_editor
+from setuper.infrastructure.launch_repository import LaunchRepository
 from setuper.infrastructure.manifests import serialize_manifest
 from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.paths import SetuperPaths, resolve_paths
@@ -201,7 +202,10 @@ def _run_list(
     connection = connect_database(active_paths.database_path)
     try:
         run_migrations(connection, MIGRATIONS)
-        records = SetupService(SetupRepository(connection)).list_setups()
+        summaries = SetupService(
+            SetupRepository(connection),
+            launch_repository=LaunchRepository(connection),
+        ).list_setups()
     finally:
         connection.close()
     if json_output:
@@ -211,26 +215,63 @@ def _run_list(
                 {
                     "setups": [
                         {
-                            "id": record.id,
-                            "name": record.name,
-                            "source": record.source,
-                            "manifest_path": record.manifest_path,
-                            "manifest_hash": record.manifest_hash,
-                            "created_at": record.created_at,
-                            "updated_at": record.updated_at,
+                            "id": summary.record.id,
+                            "name": summary.record.name,
+                            "source": summary.record.source,
+                            "manifest_path": summary.record.manifest_path,
+                            "manifest_hash": summary.record.manifest_hash,
+                            "created_at": summary.record.created_at,
+                            "updated_at": summary.record.updated_at,
+                            "resource_count": summary.resource_count,
+                            "last_launched_at": summary.last_launched_at,
+                            "status": summary.status,
                         }
-                        for record in records
+                        for summary in summaries
                     ]
                 },
             )
         )
         return 0
-    if not records:
+    if not summaries:
         print("No setups found.")
         return 0
-    for record in records:
-        print(record.name)
+    rows = [
+        (
+            summary.record.name,
+            str(summary.resource_count),
+            (
+                "never"
+                if summary.last_launched_at is None
+                else summary.last_launched_at.strftime("%Y-%m-%d %H:%M")
+            ),
+            "-" if summary.status is None else summary.status.value,
+        )
+        for summary in summaries
+    ]
+    _print_table(("NAME", "RESOURCES", "LAST LAUNCHED", "STATUS"), rows)
     return 0
+
+
+def _print_table(
+    headers: tuple[str, ...],
+    rows: Sequence[tuple[str, ...]],
+) -> None:
+    """Print a stable plain-text table without terminal-specific control codes."""
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+    print(_format_table_row(headers, widths))
+    for row in rows:
+        print(_format_table_row(row, widths))
+
+
+def _format_table_row(values: tuple[str, ...], widths: list[int]) -> str:
+    """Format one table row without trailing whitespace."""
+    return "  ".join(
+        value if index == len(values) - 1 else value.ljust(widths[index])
+        for index, value in enumerate(values)
+    )
 
 
 def _run_show(
