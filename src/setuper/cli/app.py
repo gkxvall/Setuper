@@ -9,6 +9,7 @@ from setuper import __version__
 from setuper.application.setup_service import SetupService
 from setuper.domain.errors import SetuperError
 from setuper.infrastructure.database import connect_database, run_migrations
+from setuper.infrastructure.editor import open_editor
 from setuper.infrastructure.manifests import serialize_manifest
 from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.paths import SetuperPaths, resolve_paths
@@ -35,6 +36,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include the currently available portability assessment",
     )
+    edit_parser = subparsers.add_parser(
+        "edit",
+        help="edit a setup manifest in the configured editor",
+    )
+    edit_parser.add_argument("name", help="stored setup name")
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -72,6 +78,8 @@ def main(
                 portability=arguments.portability,
                 paths=paths,
             )
+        if arguments.command == "edit":
+            return _run_edit(arguments.name, paths=paths)
     except SetuperError as error:
         print(f"ERROR [{error.error_code}] {error.message}", file=sys.stderr)
         return int(error.exit_code)
@@ -134,4 +142,18 @@ def _run_show(
         print("\nPortability:")
         print(f"  Declared platforms: {platforms}")
         print("  Resource assessment: unavailable until adapter validation")
+    return 0
+
+
+def _run_edit(name: str, *, paths: SetuperPaths | None) -> int:
+    """Edit one setup through the configured external editor."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).edit_setup(name, open_editor)
+    finally:
+        connection.close()
+    print(f"Updated {result.manifest.name} at {result.manifest_path}")
     return 0

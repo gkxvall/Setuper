@@ -98,3 +98,18 @@ common project files.
 
 **Consequence:** Initialization refuses to overwrite any existing file or
 symlink at that path.
+
+## ADR-011 — Editor selection and validation
+
+**Status:** Accepted
+
+**Decision:** `setuper edit` selects `$VISUAL`, then `$EDITOR`, and falls back to
+macOS `open -W -t`. It edits a private copy, validates it, and atomically replaces
+the stored manifest only when its name and ID are unchanged.
+
+**Reason:** Environment-based editor selection is conventional and supports
+argument-bearing commands without shell execution. A validated copy protects the
+source of truth from partial or invalid editor writes.
+
+**Consequence:** Renaming is reserved for `setuper rename`; users on non-macOS
+systems must configure `$VISUAL` or `$EDITOR`.

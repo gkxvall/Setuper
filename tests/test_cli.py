@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
 from setuper.infrastructure.paths import SetuperPaths
 
@@ -167,3 +168,35 @@ def test_show_command_returns_not_found_exit(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "ERROR [SETUP_NOT_FOUND]" in captured.err
+
+
+def test_edit_command_updates_manifest_through_editor(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI delegates edits and reports the committed manifest."""
+    project = tmp_path / "workspace"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    def edit_description(path: Path) -> None:
+        path.write_text(
+            path.read_text(encoding="utf-8") + "description: From editor\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(app, "open_editor", edit_description)
+
+    assert main(["edit", "workspace"], paths=paths) == 0
+
+    assert "Updated workspace" in capsys.readouterr().out
+    assert "description: From editor" in (project / ".setuper.yaml").read_text(
+        encoding="utf-8"
+    )

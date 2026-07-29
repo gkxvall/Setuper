@@ -1,8 +1,9 @@
 """Application service for setup lifecycle operations."""
 
 import os
+import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -35,6 +36,14 @@ class ShowResult:
 
     manifest: SetupManifest
     record: SetupRecord
+
+
+@dataclass(frozen=True, slots=True)
+class EditResult:
+    """Validated setup committed after a successful editor session."""
+
+    manifest: SetupManifest
+    manifest_path: Path
 
 
 class SetupService:
@@ -113,6 +122,49 @@ class SetupService:
         """Load and validate the manifest registered for one setup."""
         record = self._repository.get_by_name(name)
         return ShowResult(manifest=load_manifest(record.manifest_path), record=record)
+
+    def edit_setup(
+        self,
+        name: str,
+        editor: Callable[[Path], None],
+    ) -> EditResult:
+        """Edit, validate, and atomically commit one setup manifest."""
+        record = self._repository.get_by_name(name)
+        original = load_manifest(record.manifest_path)
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            dir=record.manifest_path.parent,
+            prefix=f".{record.manifest_path.name}.edit.",
+            suffix=".yaml",
+            text=True,
+        )
+        os.close(file_descriptor)
+        temporary_path = Path(temporary_name)
+        try:
+            save_manifest(temporary_path, original)
+            editor(temporary_path)
+            edited = load_manifest(temporary_path)
+            if edited.id != original.id or edited.name != original.name:
+                raise ManifestValidationError(
+                    "Use the rename command to change setup identity",
+                    details={"name": name},
+                )
+            save_manifest(record.manifest_path, edited)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+        updated_record = replace(
+            record,
+            manifest_hash=hash_manifest(record.manifest_path),
+            updated_at=self._clock(),
+        )
+        try:
+            self._repository.update(updated_record)
+        except DatabaseError as error:
+            raise DatabaseError(
+                f"Manifest edited but metadata update failed: {record.manifest_path}",
+                details={"path": str(record.manifest_path), "name": record.name},
+            ) from error
+        return EditResult(manifest=edited, manifest_path=record.manifest_path)
 
 
 def _utc_now() -> datetime:

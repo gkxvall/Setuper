@@ -79,3 +79,40 @@ def test_init_rejects_missing_or_nondirectory_paths(tmp_path: Path) -> None:
         service.init_project(tmp_path / "missing")
     with pytest.raises(ManifestValidationError):
         service.init_project(file_path)
+
+
+def test_edit_validates_before_atomically_replacing_manifest(tmp_path: Path) -> None:
+    """A valid edit commits while an identity change preserves the prior file."""
+    project = tmp_path / "workspace"
+    project.mkdir()
+    service, repository = make_service(tmp_path)
+    initialized = service.init_project(project)
+
+    def add_description(path: Path) -> None:
+        path.write_text(
+            path.read_text(encoding="utf-8") + "description: Edited safely\n",
+            encoding="utf-8",
+        )
+
+    result = service.edit_setup("workspace", add_description)
+
+    assert result.manifest.description == "Edited safely"
+    assert repository.get_by_name("workspace").manifest_hash == hash_manifest(
+        initialized.manifest_path
+    )
+
+    contents = initialized.manifest_path.read_text(encoding="utf-8")
+
+    def change_name(path: Path) -> None:
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "name: workspace",
+                "name: changed",
+            ),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ManifestValidationError):
+        service.edit_setup("workspace", change_name)
+    assert initialized.manifest_path.read_text(encoding="utf-8") == contents
+    assert not list(project.glob(".*.edit.*.yaml"))
