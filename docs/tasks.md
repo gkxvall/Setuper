@@ -31,7 +31,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement `edit`.
 - [x] Implement `clone`.
 - [x] Implement `rename`.
-- [ ] Implement `delete`.
+- [x] Implement `delete`.
 - [ ] Implement `import` and `export`.
 - [ ] Add JSON output for supported commands.
 
