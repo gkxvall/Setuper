@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "setuper"
 version = "0.1.0"
 description = "Capture and restore reproducible work setups."
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 classifiers = [
