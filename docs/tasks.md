@@ -32,7 +32,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement `clone`.
 - [x] Implement `rename`.
 - [x] Implement `delete`.
-- [ ] Implement `import` and `export`.
+- [x] Implement `import` and `export`.
 - [ ] Add JSON output for supported commands.
 
 ## Phase 3 — Capture system
