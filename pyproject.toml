@@ -60,3 +60,18 @@ mypy_path = "src"
 strict = true
 show_error_codes = true
 warn_unused_configs = true
+
+[tool.pytest.ini_options]
+minversion = "8.3"
+testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers"]
+xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["setuper"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
