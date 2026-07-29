@@ -14,7 +14,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 
 ## Phase 1 — Domain and persistence
 
-- [ ] Define domain enums and typed errors.
+- [x] Define domain enums and typed errors.
 - [ ] Define manifest Pydantic models.
 - [ ] Implement YAML load, validate, and atomic save.
 - [ ] Implement platform-standard paths.
