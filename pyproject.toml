@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "setuper"
+version = "0.1.0"
+description = "Capture and restore reproducible work setups."
+requires-python = ">=3.12"
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Documentation = "https://github.com/gkxvall/Setuper#readme"
+Issues = "https://github.com/gkxvall/Setuper/issues"
+Repository = "https://github.com/gkxvall/Setuper"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/setuper"]
