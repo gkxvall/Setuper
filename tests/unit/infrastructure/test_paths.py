@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from setuper.domain.enums import ExitCode
-from setuper.domain.errors import UnsupportedPlatformError
+from setuper.domain.errors import (
+    ManifestIOError,
+    PermissionDeniedError,
+    UnsupportedPlatformError,
+)
 from setuper.infrastructure.paths import resolve_paths
 
 
@@ -44,3 +48,28 @@ def test_unsupported_platform_fails_honestly(tmp_path: Path) -> None:
 
     assert raised.value.exit_code is ExitCode.UNSUPPORTED
     assert raised.value.details == {"platform": "linux"}
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_error"),
+    [
+        (PermissionError("denied"), PermissionDeniedError),
+        (OSError("disk unavailable"), ManifestIOError),
+    ],
+)
+def test_directory_creation_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: OSError,
+    expected_error: type[Exception],
+) -> None:
+    """User-state filesystem failures never escape as raw exceptions."""
+    paths = resolve_paths(home=tmp_path, platform_name="darwin")
+
+    def fail_mkdir(*args: object, **kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+
+    with pytest.raises(expected_error):
+        paths.ensure_directories()

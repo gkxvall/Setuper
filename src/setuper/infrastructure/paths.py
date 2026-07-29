@@ -4,7 +4,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from setuper.domain.errors import UnsupportedPlatformError
+from setuper.domain.errors import (
+    ManifestIOError,
+    PermissionDeniedError,
+    UnsupportedPlatformError,
+)
 
 APP_DIRECTORY_NAME = "setuper"
 
@@ -46,7 +50,18 @@ class SetuperPaths:
             self.log_directory,
             self.cache_directory,
         ):
-            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            try:
+                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            except PermissionError as error:
+                raise PermissionDeniedError(
+                    f"Permission denied creating Setuper directory: {directory}",
+                    details={"path": str(directory)},
+                ) from error
+            except OSError as error:
+                raise ManifestIOError(
+                    f"Could not create Setuper directory: {directory}",
+                    details={"path": str(directory)},
+                ) from error
 
 
 def resolve_paths(
