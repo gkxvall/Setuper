@@ -79,6 +79,28 @@ def test_schema_error_details_are_structured_and_do_not_echo_input(
     assert "super-secret-value" not in str(raised.value.details)
 
 
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "schema_version: 1\nname: first\nname: second\n",
+        (
+            "schema_version: 1\nname: workspace\nresources:\n"
+            "  - id: frontend\n    type: command\n    config:\n"
+            "      command: npm run dev\n      command: npm start\n"
+        ),
+    ],
+)
+def test_duplicate_yaml_keys_are_rejected(tmp_path: Path, contents: str) -> None:
+    """Duplicate keys cannot silently replace reviewed manifest content."""
+    manifest_path = tmp_path / "duplicate.yaml"
+    manifest_path.write_text(contents, encoding="utf-8")
+
+    with pytest.raises(ManifestValidationError) as raised:
+        load_manifest(manifest_path)
+
+    assert raised.value.details == {"path": str(manifest_path)}
+
+
 def test_failed_atomic_replace_preserves_existing_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

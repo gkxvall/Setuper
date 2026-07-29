@@ -6,9 +6,51 @@ from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
+from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode
 
 from setuper.domain.errors import ManifestIOError, ManifestValidationError
 from setuper.domain.models import SetupManifest
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate mapping keys."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeySafeLoader,
+    node: MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    """Construct a mapping only when every key occurs once."""
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable key",
+                key_node.start_mark,
+            ) from error
+        if duplicate:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 def load_manifest(path: Path) -> SetupManifest:
@@ -22,7 +64,7 @@ def load_manifest(path: Path) -> SetupManifest:
         ) from error
 
     try:
-        payload = yaml.safe_load(serialized)
+        payload = yaml.load(serialized, Loader=_UniqueKeySafeLoader)
     except yaml.YAMLError as error:
         raise ManifestValidationError(
             f"Invalid YAML manifest: {path}",
