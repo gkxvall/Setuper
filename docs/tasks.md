@@ -39,7 +39,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 
 - [x] Define adapter interfaces and registry.
 - [x] Implement process detection.
-- [ ] Implement listening-port detection.
+- [x] Implement listening-port detection.
 - [ ] Implement Git detection.
 - [ ] Implement Docker detection.
 - [ ] Implement Docker Compose detection.
