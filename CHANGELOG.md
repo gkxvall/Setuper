@@ -16,3 +16,6 @@ and Setuper follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ruff, Mypy, Pytest, Coverage, pre-commit, and package-build tooling.
 - macOS CI for Python 3.12 and 3.13.
 - Minimal root CLI with module, console-script, help, and version entry points.
+- Strict schema-v1 manifest models and safe atomic YAML persistence.
+- macOS user-data paths, SQLite migrations, setup/runtime repositories, and
+  exact-hash trust approval storage.
