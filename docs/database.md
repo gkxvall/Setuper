@@ -73,7 +73,7 @@ Default location:
 | launch_id | TEXT FK | Parent launch |
 | resource_id | TEXT | Manifest resource ID |
 | resource_type | TEXT | Adapter type |
-| status | TEXT | pending/running/ready/skipped/failed/stopped |
+| status | TEXT | pending/validating/starting/running/ready/skipped/blocked/failed/stopping/stopped |
 | pid | INTEGER NULL | Owned PID |
 | external_id | TEXT NULL | Container or app identifier |
 | started_at | TEXT NULL | UTC |
