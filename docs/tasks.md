@@ -10,7 +10,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Add license, README, changelog, contributing, code of conduct, and security policy.
 - [x] Add Ruff, Mypy, Pytest, Coverage, and pre-commit configuration.
 - [x] Add CI workflow.
-- [ ] Add a minimal root CLI and version command.
+- [x] Add a minimal root CLI and version command.
 
 ## Phase 1 — Domain and persistence
 
