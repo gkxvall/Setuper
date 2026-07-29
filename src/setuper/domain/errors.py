@@ -38,6 +38,18 @@ class ManifestIOError(SetuperError):
     error_code = "MANIFEST_IO"
 
 
+class DatabaseError(SetuperError):
+    """SQLite state could not be opened or queried safely."""
+
+    error_code = "DATABASE"
+
+
+class DatabaseMigrationError(DatabaseError):
+    """A transactional database migration failed."""
+
+    error_code = "DATABASE_MIGRATION"
+
+
 class SetupNotFoundError(SetuperError):
     """A requested setup name is not stored."""
 

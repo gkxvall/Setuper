@@ -5,6 +5,8 @@ import pytest
 from setuper.domain.enums import ExitCode
 from setuper.domain.errors import (
     AdapterUnavailableError,
+    DatabaseError,
+    DatabaseMigrationError,
     DependencyCycleError,
     ManifestIOError,
     ManifestValidationError,
@@ -24,6 +26,8 @@ from setuper.domain.errors import (
     [
         (ManifestValidationError, "MANIFEST_VALIDATION", ExitCode.VALIDATION_FAILURE),
         (ManifestIOError, "MANIFEST_IO", ExitCode.GENERAL_FAILURE),
+        (DatabaseError, "DATABASE", ExitCode.GENERAL_FAILURE),
+        (DatabaseMigrationError, "DATABASE_MIGRATION", ExitCode.GENERAL_FAILURE),
         (SetupNotFoundError, "SETUP_NOT_FOUND", ExitCode.SETUP_NOT_FOUND),
         (PermissionDeniedError, "PERMISSION_DENIED", ExitCode.PERMISSION_MISSING),
         (PartialLaunchError, "PARTIAL_LAUNCH", ExitCode.PARTIAL_LAUNCH),
