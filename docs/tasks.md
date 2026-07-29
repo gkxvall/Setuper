@@ -21,7 +21,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Add SQLite connection and migration runner.
 - [x] Add initial database schema.
 - [x] Add setup repository and launch repository.
-- [ ] Add manifest hashing and trust approvals.
+- [x] Add manifest hashing and trust approvals.
 
 ## Phase 2 — Setup commands
 
