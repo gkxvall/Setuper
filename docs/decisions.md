@@ -71,3 +71,17 @@ This file contains compact ADRs. New significant decisions must append a numbere
 **Reason:** Fine-grained history makes Codex work reviewable, reversible, and auditable.
 
 **Constraint:** Commits must remain meaningful; no empty or artificial micro-commits.
+
+## ADR-009 — Manifest IDs are optional at parse time
+
+**Status:** Accepted
+
+**Decision:** Schema-v1 manifests accept an omitted `id`. Setup creation and import
+workflows assign a stable UUID before persistence.
+
+**Reason:** The manifest API lists `id`, while the canonical example omits it.
+Parsing the example must remain valid without generating nondeterministic data
+during validation.
+
+**Consequence:** A parsed manifest may have no ID, but repositories must reject or
+assign one before recording the setup in SQLite.
