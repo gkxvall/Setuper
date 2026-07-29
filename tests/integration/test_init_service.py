@@ -146,3 +146,48 @@ def test_clone_creates_new_local_identity_without_overwriting(tmp_path: Path) ->
     with pytest.raises(ManifestValidationError):
         clone_service.clone_setup("source", "target copy", manifest_directory)
     assert len(list(manifest_directory.glob("*.yaml"))) == 1
+
+
+def test_rename_updates_manifest_and_metadata_but_preserves_identity(
+    tmp_path: Path,
+) -> None:
+    """Rename retains the UUID and path while changing the hash and lookup name."""
+    project = tmp_path / "source"
+    project.mkdir()
+    service, repository = make_service(tmp_path)
+    initialized = service.init_project(project)
+    original_hash = repository.get_by_name("source").manifest_hash
+
+    result = service.rename_setup("source", "  Démo renamed  ")
+
+    assert result.manifest.name == "Démo renamed"
+    assert result.manifest.id == initialized.manifest.id
+    assert result.manifest_path == initialized.manifest_path
+    record = repository.get_by_name("Démo renamed")
+    assert record.manifest_hash != original_hash
+    assert record.manifest_hash == hash_manifest(result.manifest_path)
+
+
+def test_rename_refuses_existing_target_without_changing_source(
+    tmp_path: Path,
+) -> None:
+    """A duplicate target name leaves both setup manifests untouched."""
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    service, _ = make_service(tmp_path)
+    original = service.init_project(first)
+    second_connection = connect_database(tmp_path / "state.db")
+    second_service = SetupService(
+        SetupRepository(second_connection),
+        id_factory=lambda: CLONE_ID,
+        clock=lambda: NOW,
+    )
+    second_service.init_project(second)
+    contents = original.manifest_path.read_text(encoding="utf-8")
+
+    with pytest.raises(ManifestValidationError):
+        service.rename_setup("first", "second")
+
+    assert original.manifest_path.read_text(encoding="utf-8") == contents

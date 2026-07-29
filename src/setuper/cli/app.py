@@ -47,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     clone_parser.add_argument("source", help="source setup name")
     clone_parser.add_argument("target", help="new setup name")
+    rename_parser = subparsers.add_parser(
+        "rename",
+        help="rename a stored setup",
+    )
+    rename_parser.add_argument("old", help="current setup name")
+    rename_parser.add_argument("new", help="new setup name")
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -90,6 +96,12 @@ def main(
             return _run_clone(
                 arguments.source,
                 arguments.target,
+                paths=paths,
+            )
+        if arguments.command == "rename":
+            return _run_rename(
+                arguments.old,
+                arguments.new,
                 paths=paths,
             )
     except SetuperError as error:
@@ -191,4 +203,23 @@ def _run_clone(
     finally:
         connection.close()
     print(f"Cloned {source} as {result.manifest.name} at {result.manifest_path}")
+    return 0
+
+
+def _run_rename(
+    old: str,
+    new: str,
+    *,
+    paths: SetuperPaths | None,
+) -> int:
+    """Rename one stored setup and its manifest metadata."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).rename_setup(old, new)
+    finally:
+        connection.close()
+    print(f"Renamed {old} as {result.manifest.name}")
     return 0

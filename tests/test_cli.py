@@ -223,3 +223,25 @@ def test_clone_command_creates_independent_managed_setup(
     cloned_files = list(paths.manifest_directory.glob("*.yaml"))
     assert len(cloned_files) == 1
     assert "name: target copy" in cloned_files[0].read_text(encoding="utf-8")
+
+
+def test_rename_command_updates_future_lookup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI renames a setup across its manifest and database lookup."""
+    project = tmp_path / "source"
+    project.mkdir()
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["init", str(project)], paths=paths) == 0
+    capsys.readouterr()
+
+    assert main(["rename", "source", "renamed"], paths=paths) == 0
+    assert "Renamed source as renamed" in capsys.readouterr().out
+    assert main(["show", "renamed"], paths=paths) == 0
+    assert "name: renamed" in capsys.readouterr().out
+    assert main(["show", "source"], paths=paths) == 4

@@ -57,6 +57,14 @@ class CloneResult:
     manifest_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class RenameResult:
+    """Renamed setup retaining its stable identity and manifest location."""
+
+    manifest: SetupManifest
+    manifest_path: Path
+
+
 class SetupService:
     """Coordinate setup manifests and their operational metadata."""
 
@@ -184,8 +192,8 @@ class SetupService:
         manifest_directory: Path,
     ) -> CloneResult:
         """Clone a setup under a new identity without copying trust."""
-        self._require_available_name(target_name)
         source = self.show_setup(source_name)
+        target_name = self._require_available_name(target_name)
         setup_id = self._id_factory()
         cloned = SetupManifest.model_validate(
             {
@@ -218,7 +226,34 @@ class SetupService:
             raise
         return CloneResult(manifest=cloned, manifest_path=manifest_path)
 
-    def _require_available_name(self, name: str) -> None:
+    def rename_setup(self, old_name: str, new_name: str) -> RenameResult:
+        """Rename one setup while retaining its ID and manifest path."""
+        current = self.show_setup(old_name)
+        new_name = self._require_available_name(new_name)
+        renamed = SetupManifest.model_validate(
+            {
+                **current.manifest.model_dump(mode="python"),
+                "name": new_name,
+            }
+        )
+        save_manifest(current.record.manifest_path, renamed)
+        updated_record = replace(
+            current.record,
+            name=renamed.name,
+            manifest_hash=hash_manifest(current.record.manifest_path),
+            updated_at=self._clock(),
+        )
+        try:
+            self._repository.update(updated_record)
+        except DatabaseError:
+            save_manifest(current.record.manifest_path, current.manifest)
+            raise
+        return RenameResult(
+            manifest=renamed,
+            manifest_path=current.record.manifest_path,
+        )
+
+    def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""
         try:
             validated = SetupManifest(name=name).name
@@ -229,7 +264,7 @@ class SetupService:
         try:
             self._repository.get_by_name(validated)
         except SetupNotFoundError:
-            return
+            return validated
         raise ManifestValidationError(
             f"Setup name already exists: {validated}",
             details={"name": validated},
