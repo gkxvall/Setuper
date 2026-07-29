@@ -28,10 +28,8 @@ Official v1.0.0 support targets Python 3.12 and 3.13 on macOS 14 or newer.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --editable .
+python -m pip install --editable '.[dev]'
 ```
-
-The development checks and their dependencies will be added during Phase 0.
 
 ## Documentation
 

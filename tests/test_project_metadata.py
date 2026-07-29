@@ -16,3 +16,4 @@ def test_project_targets_supported_python() -> None:
     assert project["readme"] == "README.md"
     assert project["license"] == "MIT"
     assert project["requires-python"] == ">=3.12"
+    assert "dev" in project["optional-dependencies"]

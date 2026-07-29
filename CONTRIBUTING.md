@@ -18,11 +18,8 @@ Use Python 3.12 or 3.13.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --editable .
+python -m pip install --editable '.[dev]'
 ```
-
-Development-tool dependencies and pre-commit installation will be documented
-when their Phase 0 configuration lands.
 
 ## Making a change
 

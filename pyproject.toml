@@ -22,6 +22,16 @@ classifiers = [
   "Typing :: Typed",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "coverage[toml]>=7.6",
+  "mypy>=1.14",
+  "pre-commit>=4.0",
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.9",
+]
+
 [project.urls]
 Documentation = "https://github.com/gkxvall/Setuper#readme"
 Issues = "https://github.com/gkxvall/Setuper/issues"
