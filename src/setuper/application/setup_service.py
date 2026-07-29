@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Never
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -120,13 +121,11 @@ class SetupService:
 
     def init_project(self, project_path: Path) -> InitResult:
         """Create and register a new project-local manifest."""
-        try:
-            resolved_project = project_path.expanduser().resolve(strict=True)
-        except OSError as error:
-            raise ManifestIOError(
-                f"Project path does not exist: {project_path}",
-                details={"path": str(project_path)},
-            ) from error
+        resolved_project = _resolve_path(
+            project_path,
+            purpose="project path",
+            strict=True,
+        )
         if not resolved_project.is_dir():
             raise ManifestValidationError(
                 f"Project path is not a directory: {resolved_project}",
@@ -204,12 +203,19 @@ class SetupService:
         """Edit, validate, and atomically commit one setup manifest."""
         record = self._repository.get_by_name(name)
         original = load_manifest(record.manifest_path)
-        file_descriptor, temporary_name = tempfile.mkstemp(
-            dir=record.manifest_path.parent,
-            prefix=f".{record.manifest_path.name}.edit.",
-            suffix=".yaml",
-            text=True,
-        )
+        try:
+            file_descriptor, temporary_name = tempfile.mkstemp(
+                dir=record.manifest_path.parent,
+                prefix=f".{record.manifest_path.name}.edit.",
+                suffix=".yaml",
+                text=True,
+            )
+        except OSError as error:
+            raise ManifestIOError(
+                f"Could not create temporary editor file: "
+                f"{record.manifest_path.parent}",
+                details={"path": str(record.manifest_path)},
+            ) from error
         os.close(file_descriptor)
         temporary_path = Path(temporary_name)
         try:
@@ -223,7 +229,13 @@ class SetupService:
                 )
             save_manifest(record.manifest_path, edited)
         finally:
-            temporary_path.unlink(missing_ok=True)
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError as error:
+                raise ManifestIOError(
+                    f"Could not remove temporary editor file: {temporary_path}",
+                    details={"path": str(temporary_path)},
+                ) from error
 
         updated_record = replace(
             record,
@@ -256,7 +268,7 @@ class SetupService:
                 "name": target_name,
             }
         )
-        manifest_path = manifest_directory.resolve() / f"{setup_id}.yaml"
+        manifest_path = _managed_manifest_path(manifest_directory, setup_id)
         if os.path.lexists(manifest_path):
             raise ManifestValidationError(
                 f"Clone destination already exists: {manifest_path}",
@@ -275,9 +287,8 @@ class SetupService:
         )
         try:
             self._repository.create(record)
-        except DatabaseError:
-            manifest_path.unlink(missing_ok=True)
-            raise
+        except DatabaseError as database_error:
+            _rollback_managed_manifest(manifest_path, database_error)
         return CloneResult(manifest=cloned, manifest_path=manifest_path)
 
     def rename_setup(self, old_name: str, new_name: str) -> RenameResult:
@@ -332,7 +343,7 @@ class SetupService:
     def export_setup(self, name: str, output_path: Path) -> ExportResult:
         """Export one validated manifest without overwriting a destination."""
         setup = self.show_setup(name)
-        destination = output_path.expanduser().resolve()
+        destination = _resolve_path(output_path, purpose="export destination")
         if os.path.lexists(destination):
             raise ManifestValidationError(
                 f"Export destination already exists: {destination}",
@@ -349,7 +360,7 @@ class SetupService:
         name: str | None = None,
     ) -> ImportResult:
         """Validate and copy one untrusted manifest into managed storage."""
-        source = source_path.expanduser().resolve()
+        source = _resolve_path(source_path, purpose="import source")
         imported = load_manifest(source)
         imported_name = self._require_available_name(
             imported.name if name is None else name
@@ -363,7 +374,7 @@ class SetupService:
                 "name": imported_name,
             }
         )
-        manifest_path = manifest_directory.resolve() / f"{setup_id}.yaml"
+        manifest_path = _managed_manifest_path(manifest_directory, setup_id)
         if os.path.lexists(manifest_path):
             raise ManifestValidationError(
                 f"Import destination already exists: {manifest_path}",
@@ -382,9 +393,8 @@ class SetupService:
         )
         try:
             self._repository.create(record)
-        except DatabaseError:
-            manifest_path.unlink(missing_ok=True)
-            raise
+        except DatabaseError as database_error:
+            _rollback_managed_manifest(manifest_path, database_error)
         return ImportResult(
             manifest=normalized,
             manifest_path=manifest_path,
@@ -437,5 +447,45 @@ def _is_managed_manifest(
             and record.manifest_path.name == f"{record.id}.yaml"
             and not record.manifest_path.is_symlink()
         )
-    except OSError:
+    except (OSError, RuntimeError):
         return False
+
+
+def _resolve_path(
+    path: Path,
+    *,
+    purpose: str,
+    strict: bool = False,
+) -> Path:
+    """Resolve a user-facing path and translate filesystem edge cases."""
+    try:
+        return path.expanduser().resolve(strict=strict)
+    except (OSError, RuntimeError) as error:
+        raise ManifestIOError(
+            f"Could not resolve {purpose}: {path}",
+            details={"path": str(path)},
+        ) from error
+
+
+def _managed_manifest_path(directory: Path, setup_id: UUID) -> Path:
+    """Build a UUID filename under a resolvable managed directory."""
+    resolved_directory = _resolve_path(
+        directory,
+        purpose="managed manifest directory",
+    )
+    return resolved_directory / f"{setup_id}.yaml"
+
+
+def _rollback_managed_manifest(
+    manifest_path: Path,
+    database_error: DatabaseError,
+) -> Never:
+    """Remove an unregistered managed manifest or report rollback failure."""
+    try:
+        manifest_path.unlink(missing_ok=True)
+    except OSError as cleanup_error:
+        raise DatabaseError(
+            f"Setup registration and manifest cleanup failed: {manifest_path}",
+            details={"path": str(manifest_path)},
+        ) from cleanup_error
+    raise database_error

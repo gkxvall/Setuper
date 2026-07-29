@@ -88,6 +88,16 @@ def test_init_rejects_missing_or_nondirectory_paths(tmp_path: Path) -> None:
         service.init_project(file_path)
 
 
+def test_init_translates_symlink_loop_resolution_failure(tmp_path: Path) -> None:
+    """A cyclic project path is a typed IO error rather than a traceback."""
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    service, _ = make_service(tmp_path)
+
+    with pytest.raises(ManifestIOError, match="Could not resolve project path"):
+        service.init_project(loop)
+
+
 def test_edit_validates_before_atomically_replacing_manifest(tmp_path: Path) -> None:
     """A valid edit commits while an identity change preserves the prior file."""
     project = tmp_path / "workspace"
