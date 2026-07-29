@@ -85,3 +85,16 @@ during validation.
 
 **Consequence:** A parsed manifest may have no ID, but repositories must reject or
 assign one before recording the setup in SQLite.
+
+## ADR-010 — Project-local manifest filename
+
+**Status:** Accepted
+
+**Decision:** `setuper init [PATH]` creates `PATH/.setuper.yaml`.
+
+**Reason:** The CLI contract defines project initialization but not its filename.
+A hidden, repository-local YAML file is discoverable without competing with
+common project files.
+
+**Consequence:** Initialization refuses to overwrite any existing file or
+symlink at that path.
