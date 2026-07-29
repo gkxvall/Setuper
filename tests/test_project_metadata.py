@@ -17,3 +17,7 @@ def test_project_targets_supported_python() -> None:
     assert project["license"] == "MIT"
     assert project["requires-python"] == ">=3.12"
     assert "dev" in project["optional-dependencies"]
+    assert any(
+        dependency.startswith("build")
+        for dependency in project["optional-dependencies"]["dev"]
+    )
