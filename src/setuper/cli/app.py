@@ -74,6 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="new YAML output file",
     )
+    import_parser = subparsers.add_parser(
+        "import",
+        help="import an untrusted setup manifest",
+    )
+    import_parser.add_argument("file", type=Path, help="YAML manifest file")
+    import_parser.add_argument(
+        "--name",
+        help="override the imported setup name",
+    )
     init_parser = subparsers.add_parser(
         "init",
         help="create a project-local setup manifest",
@@ -135,6 +144,12 @@ def main(
             return _run_export(
                 arguments.name,
                 arguments.output,
+                paths=paths,
+            )
+        if arguments.command == "import":
+            return _run_import(
+                arguments.file,
+                name=arguments.name,
                 paths=paths,
             )
     except SetuperError as error:
@@ -312,4 +327,28 @@ def _run_export(
     finally:
         connection.close()
     print(f"Exported {result.manifest.name} to {result.output_path}")
+    return 0
+
+
+def _run_import(
+    source: Path,
+    *,
+    name: str | None,
+    paths: SetuperPaths | None,
+) -> int:
+    """Import one manifest into untrusted managed storage."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        result = SetupService(SetupRepository(connection)).import_setup(
+            source,
+            active_paths.manifest_directory,
+            name=name,
+        )
+    finally:
+        connection.close()
+    print(f"Imported {result.manifest.name} from {result.source_path}")
+    print("Trust: untrusted; inspect the manifest before trusting it")
     return 0

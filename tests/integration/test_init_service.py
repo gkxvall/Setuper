@@ -13,11 +13,13 @@ from setuper.domain.errors import (
     ManifestValidationError,
     SetupNotFoundError,
 )
+from setuper.domain.models import SetupManifest
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.hashing import hash_manifest
-from setuper.infrastructure.manifests import load_manifest
+from setuper.infrastructure.manifests import load_manifest, save_manifest
 from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.setup_repository import SetupRepository
+from setuper.infrastructure.trust_repository import TrustRepository
 
 SETUP_ID = UUID("e84b8d08-e05d-49de-a7ab-4e38f919eb89")
 CLONE_ID = UUID("8242489f-4611-4870-8cf5-13aecafd62e6")
@@ -252,3 +254,61 @@ def test_export_writes_manifest_only_and_refuses_overwrite(tmp_path: Path) -> No
     with pytest.raises(ManifestValidationError):
         service.export_setup("source", output)
     assert output.read_text(encoding="utf-8") == contents
+
+
+def test_import_assigns_missing_id_and_starts_untrusted(tmp_path: Path) -> None:
+    """Imported YAML is normalized, managed, registered, and never preapproved."""
+    source = tmp_path / "Transfers With Spaces" / "démo.yaml"
+    save_manifest(source, SetupManifest(name="external"))
+    original_contents = source.read_text(encoding="utf-8")
+    service, repository = make_service(tmp_path)
+    managed = tmp_path / "managed"
+
+    result = service.import_setup(source, managed, name="Imported Démo")
+
+    assert result.manifest.id == SETUP_ID
+    assert result.manifest.name == "Imported Démo"
+    assert result.manifest_path == managed.resolve() / f"{SETUP_ID}.yaml"
+    record = repository.get_by_name("Imported Démo")
+    assert record.source is SetupSource.IMPORTED
+    assert source.read_text(encoding="utf-8") == original_contents
+    with connect_database(tmp_path / "state.db") as connection:
+        assert (
+            TrustRepository(connection).active_approval(
+                SETUP_ID,
+                record.manifest_hash,
+            )
+            is None
+        )
+
+
+def test_import_rejects_existing_stable_id_before_writing(tmp_path: Path) -> None:
+    """An imported UUID collision leaves managed storage untouched."""
+    project = tmp_path / "source"
+    project.mkdir()
+    service, _ = make_service(tmp_path)
+    initialized = service.init_project(project)
+    transfer = tmp_path / "transfer.yaml"
+    save_manifest(
+        transfer,
+        initialized.manifest.model_copy(update={"name": "different"}),
+    )
+    managed = tmp_path / "managed"
+
+    with pytest.raises(ManifestValidationError, match="ID already exists"):
+        service.import_setup(transfer, managed)
+
+    assert not managed.exists()
+
+
+def test_import_rejects_empty_name_override(tmp_path: Path) -> None:
+    """An explicit empty import name is not treated as an omitted override."""
+    source = tmp_path / "incoming.yaml"
+    save_manifest(source, SetupManifest(name="incoming"))
+    service, _ = make_service(tmp_path)
+    managed = tmp_path / "managed"
+
+    with pytest.raises(ManifestValidationError, match="must not be empty"):
+        service.import_setup(source, managed, name="")
+
+    assert not managed.exists()

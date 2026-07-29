@@ -10,6 +10,8 @@ import pytest
 
 from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
+from setuper.domain.models import SetupManifest
+from setuper.infrastructure.manifests import save_manifest
 from setuper.infrastructure.paths import SetuperPaths
 
 
@@ -326,3 +328,31 @@ def test_export_command_writes_standalone_yaml(
     assert f"Exported source to {output}" in capsys.readouterr().out
     assert output.is_file()
     assert list(paths.manifest_directory.glob("*.yaml")) == []
+
+
+def test_import_command_registers_untrusted_manifest_with_name_override(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI imports safe YAML and clearly surfaces its untrusted state."""
+    source = tmp_path / "incoming.yaml"
+    save_manifest(source, SetupManifest(name="incoming"))
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert (
+        main(
+            ["import", str(source), "--name", "Imported Setup"],
+            paths=paths,
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Imported Imported Setup" in output
+    assert "Trust: untrusted" in output
+    assert len(list(paths.manifest_directory.glob("*.yaml"))) == 1
+    assert main(["show", "Imported Setup"], paths=paths) == 0

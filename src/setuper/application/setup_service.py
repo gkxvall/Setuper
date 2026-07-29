@@ -81,6 +81,15 @@ class ExportResult:
     output_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class ImportResult:
+    """Imported untrusted manifest and its managed storage location."""
+
+    manifest: SetupManifest
+    manifest_path: Path
+    source_path: Path
+
+
 class SetupService:
     """Coordinate setup manifests and their operational metadata."""
 
@@ -303,6 +312,56 @@ class SetupService:
         save_manifest(destination, setup.manifest)
         return ExportResult(manifest=setup.manifest, output_path=destination)
 
+    def import_setup(
+        self,
+        source_path: Path,
+        manifest_directory: Path,
+        *,
+        name: str | None = None,
+    ) -> ImportResult:
+        """Validate and copy one untrusted manifest into managed storage."""
+        source = source_path.expanduser().resolve()
+        imported = load_manifest(source)
+        imported_name = self._require_available_name(
+            imported.name if name is None else name
+        )
+        setup_id = imported.id or self._id_factory()
+        self._require_available_id(setup_id)
+        normalized = SetupManifest.model_validate(
+            {
+                **imported.model_dump(mode="python"),
+                "id": setup_id,
+                "name": imported_name,
+            }
+        )
+        manifest_path = manifest_directory.resolve() / f"{setup_id}.yaml"
+        if os.path.lexists(manifest_path):
+            raise ManifestValidationError(
+                f"Import destination already exists: {manifest_path}",
+                details={"path": str(manifest_path)},
+            )
+        save_manifest(manifest_path, normalized)
+        timestamp = self._clock()
+        record = SetupRecord(
+            id=setup_id,
+            name=normalized.name,
+            manifest_path=manifest_path,
+            manifest_hash=hash_manifest(manifest_path),
+            source=SetupSource.IMPORTED,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        try:
+            self._repository.create(record)
+        except DatabaseError:
+            manifest_path.unlink(missing_ok=True)
+            raise
+        return ImportResult(
+            manifest=normalized,
+            manifest_path=manifest_path,
+            source_path=source,
+        )
+
     def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""
         try:
@@ -318,6 +377,18 @@ class SetupService:
         raise ManifestValidationError(
             f"Setup name already exists: {validated}",
             details={"name": validated},
+        )
+
+    def _require_available_id(self, setup_id: UUID) -> None:
+        """Reject a stable setup identity already registered locally."""
+        try:
+            self._repository.get_by_id(setup_id)
+        except SetupNotFoundError:
+            return
+        serialized_id = str(setup_id)
+        raise ManifestValidationError(
+            f"Setup ID already exists: {serialized_id}",
+            details={"setup_id": serialized_id},
         )
 
 

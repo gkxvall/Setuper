@@ -139,3 +139,18 @@ an existing file or symlink.
 Refusing replacement prevents an output typo from destroying an existing file.
 
 **Consequence:** Users must choose a new destination path for every export.
+
+## ADR-014 — Imported identity and trust
+
+**Status:** Accepted
+
+**Decision:** Import preserves a manifest UUID when present and assigns one when
+omitted. It copies validated YAML to managed UUID storage, records
+`source=imported`, and creates no trust approval.
+
+**Reason:** Stable identities should survive transfer, while imported executable
+content must remain untrusted. Rejecting a local UUID collision avoids silently
+changing identity.
+
+**Consequence:** Re-importing the same identity requires deleting the existing
+local setup first. `--name` changes only the imported copy.
