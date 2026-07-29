@@ -39,3 +39,17 @@ Repository = "https://github.com/gkxvall/Setuper"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/setuper"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.ruff.format]
+docstring-code-format = true
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
