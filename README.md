@@ -1,5 +1,7 @@
 # Setuper
 
+![Setuper terminal and computer logo](assets/readmesetuperlogo.png)
+
 Setuper is a macOS-first Python CLI for capturing and restoring reproducible work
 setups. A setup records the intent of a workspace—projects, commands, services,
 applications, browser tabs, and window placement—without pretending to freeze
