@@ -53,3 +53,10 @@ docstring-code-format = true
 indent-style = "space"
 line-ending = "lf"
 quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+strict = true
+show_error_codes = true
+warn_unused_configs = true
