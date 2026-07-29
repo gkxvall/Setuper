@@ -26,7 +26,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 ## Phase 2 — Setup commands
 
 - [x] Implement `init`.
-- [ ] Implement `list`.
+- [x] Implement `list`.
 - [ ] Implement `show`.
 - [ ] Implement `edit`.
 - [ ] Implement `clone`.
