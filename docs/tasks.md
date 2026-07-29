@@ -28,7 +28,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement `init`.
 - [x] Implement `list`.
 - [x] Implement `show`.
-- [ ] Implement `edit`.
+- [x] Implement `edit`.
 - [ ] Implement `clone`.
 - [ ] Implement `rename`.
 - [ ] Implement `delete`.
