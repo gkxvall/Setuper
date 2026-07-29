@@ -17,7 +17,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Define domain enums and typed errors.
 - [x] Define manifest Pydantic models.
 - [x] Implement YAML load, validate, and atomic save.
-- [ ] Implement platform-standard paths.
+- [x] Implement platform-standard paths.
 - [ ] Add SQLite connection and migration runner.
 - [ ] Add initial database schema.
 - [ ] Add setup repository and launch repository.
