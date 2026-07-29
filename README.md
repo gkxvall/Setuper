@@ -29,6 +29,8 @@ Official v1.0.0 support targets Python 3.12 and 3.13 on macOS 14 or newer.
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --editable '.[dev]'
+setuper --help
+setuper version
 ```
 
 ## Documentation

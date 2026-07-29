@@ -65,6 +65,7 @@ Capture must assign each finding one status:
 ## CLI Contract
 
 ```text
+setuper version
 setuper init [PATH]
 setuper inspect [--json]
 setuper save NAME [--dry-run] [--include TYPE] [--exclude TYPE]
