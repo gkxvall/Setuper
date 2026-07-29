@@ -49,6 +49,9 @@ pytest -q
 Review the final diff for accidental files, credentials, unsafe subprocess use,
 and unrelated changes before committing.
 
+Report vulnerabilities privately according to the
+[security policy](SECURITY.md), never in a public issue.
+
 ## Pull requests
 
 Explain the user-visible outcome, the tests run, and any honest platform

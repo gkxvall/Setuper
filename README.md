@@ -39,6 +39,7 @@ The development checks and their dependencies will be added during Phase 0.
 - [Specifications](docs/specs.md)
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
+- [Security reporting policy](SECURITY.md)
 - [Testing strategy](docs/testing.md)
 - [Known limitations](docs/known-issues.md)
 - [Implementation tasks](docs/tasks.md)
