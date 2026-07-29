@@ -4,9 +4,9 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 
 ## Phase 0 — Repository foundation
 
-- [ ] Initialize Git repository if needed.
-- [ ] Add Python `src/` package layout.
-- [ ] Add `pyproject.toml`.
+- [x] Initialize Git repository if needed.
+- [x] Add Python `src/` package layout.
+- [x] Add `pyproject.toml`.
 - [ ] Add license, README, changelog, contributing, code of conduct, and security policy.
 - [ ] Add Ruff, Mypy, Pytest, Coverage, and pre-commit configuration.
 - [ ] Add CI workflow.
