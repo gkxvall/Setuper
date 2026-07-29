@@ -19,6 +19,7 @@ Use Python 3.12 or 3.13.
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --editable '.[dev]'
+pre-commit install
 ```
 
 ## Making a change
@@ -42,6 +43,8 @@ ruff format --check .
 mypy src
 pytest -q
 ```
+
+Run every configured commit hook with `pre-commit run --all-files`.
 
 Review the final diff for accidental files, credentials, unsafe subprocess use,
 and unrelated changes before committing.
