@@ -19,3 +19,6 @@ and Setuper follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Strict schema-v1 manifest models and safe atomic YAML persistence.
 - macOS user-data paths, SQLite migrations, setup/runtime repositories, and
   exact-hash trust approval storage.
+- Project initialization plus list, show, edit, clone, rename, safe delete,
+  import, and export setup lifecycle commands.
+- Deterministic JSON success and error envelopes for setup listing and display.
