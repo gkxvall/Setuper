@@ -113,3 +113,9 @@ def test_naive_timestamps_are_rejected_before_insert(tmp_path: Path) -> None:
 
         with pytest.raises(ValueError, match="timezone-aware"):
             repository.create(record)
+
+
+def test_setup_record_requires_absolute_manifest_path(tmp_path: Path) -> None:
+    """Relative manifest paths never enter operational metadata."""
+    with pytest.raises(ValueError, match="must be absolute"):
+        replace(make_record(tmp_path), manifest_path=Path("relative.yaml"))

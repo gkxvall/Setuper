@@ -22,6 +22,11 @@ class SetupRecord:
     created_at: datetime
     updated_at: datetime
 
+    def __post_init__(self) -> None:
+        """Require the absolute manifest path documented by the database schema."""
+        if not self.manifest_path.is_absolute():
+            raise ValueError("manifest_path must be absolute")
+
 
 class SetupRepository:
     """Persist and query setup metadata without owning manifest contents."""
