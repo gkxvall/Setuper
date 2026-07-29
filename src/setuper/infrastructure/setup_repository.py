@@ -107,6 +107,26 @@ class SetupRepository:
             )
         return _row_to_record(row)
 
+    def get_by_id(self, setup_id: UUID) -> SetupRecord:
+        """Return one setup by its stable UUID."""
+        serialized_id = str(setup_id)
+        try:
+            row = self._connection.execute(
+                "SELECT * FROM setups WHERE id = ?",
+                (serialized_id,),
+            ).fetchone()
+        except sqlite3.Error as error:
+            raise DatabaseError(
+                f"Could not query setup metadata ID: {serialized_id}",
+                details={"setup_id": serialized_id},
+            ) from error
+        if row is None:
+            raise SetupNotFoundError(
+                f"Setup not found for ID: {serialized_id}",
+                details={"setup_id": serialized_id},
+            )
+        return _row_to_record(row)
+
     def list(self) -> tuple[SetupRecord, ...]:
         """Return all setups in stable name order."""
         try:

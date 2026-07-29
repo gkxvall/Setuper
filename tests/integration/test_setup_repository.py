@@ -45,6 +45,7 @@ def test_create_get_and_list_setups(tmp_path: Path) -> None:
         repository.create(alpha)
 
         assert repository.get_by_name("développement") == development
+        assert repository.get_by_id(SETUP_ID) == development
         assert repository.list() == (alpha, development)
 
 
@@ -79,6 +80,8 @@ def test_missing_setup_operations_are_typed(tmp_path: Path) -> None:
 
         with pytest.raises(SetupNotFoundError):
             repository.get_by_name("missing")
+        with pytest.raises(SetupNotFoundError):
+            repository.get_by_id(SETUP_ID)
         with pytest.raises(SetupNotFoundError):
             repository.update(missing)
         with pytest.raises(SetupNotFoundError):
