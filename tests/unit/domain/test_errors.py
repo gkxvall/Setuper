@@ -6,6 +6,7 @@ from setuper.domain.enums import ExitCode
 from setuper.domain.errors import (
     AdapterUnavailableError,
     DependencyCycleError,
+    ManifestIOError,
     ManifestValidationError,
     PartialLaunchError,
     PermissionDeniedError,
@@ -22,6 +23,7 @@ from setuper.domain.errors import (
     ("error_type", "error_code", "exit_code"),
     [
         (ManifestValidationError, "MANIFEST_VALIDATION", ExitCode.VALIDATION_FAILURE),
+        (ManifestIOError, "MANIFEST_IO", ExitCode.GENERAL_FAILURE),
         (SetupNotFoundError, "SETUP_NOT_FOUND", ExitCode.SETUP_NOT_FOUND),
         (PermissionDeniedError, "PERMISSION_DENIED", ExitCode.PERMISSION_MISSING),
         (PartialLaunchError, "PARTIAL_LAUNCH", ExitCode.PARTIAL_LAUNCH),

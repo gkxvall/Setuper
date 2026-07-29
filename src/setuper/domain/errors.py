@@ -32,6 +32,12 @@ class ManifestValidationError(SetuperError):
     exit_code = ExitCode.VALIDATION_FAILURE
 
 
+class ManifestIOError(SetuperError):
+    """A manifest could not be read or written safely."""
+
+    error_code = "MANIFEST_IO"
+
+
 class SetupNotFoundError(SetuperError):
     """A requested setup name is not stored."""
 
