@@ -88,9 +88,12 @@ def test_git_detection_handles_non_repository_and_detached_head(
     tmp_path: Path,
 ) -> None:
     """A non-repository is absent; detached HEAD is explicitly surfaced."""
-    assert GitAdapter(
-        FakeCommandRunner({"--show-toplevel": CommandResult(1, "", "")})
-    ).detect(make_context(tmp_path)) == []
+    assert (
+        GitAdapter(
+            FakeCommandRunner({"--show-toplevel": CommandResult(1, "", "")})
+        ).detect(make_context(tmp_path))
+        == []
+    )
 
     root = tmp_path / "repository"
     adapter = GitAdapter(

@@ -46,17 +46,9 @@ class GitAdapter(BaseResourceAdapter):
         root = Path(root_text).expanduser().resolve()
 
         branch_result = self._git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
-        branch = (
-            branch_result.stdout.strip()
-            if branch_result.returncode == 0
-            else None
-        )
+        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
         commit_result = self._git(root, "rev-parse", "--short=12", "HEAD")
-        commit = (
-            commit_result.stdout.strip()
-            if commit_result.returncode == 0
-            else None
-        )
+        commit = commit_result.stdout.strip() if commit_result.returncode == 0 else None
         remote_result = self._git(root, "remote", "get-url", "origin")
         remote = (
             _redact_remote(remote_result.stdout.strip())
@@ -81,9 +73,7 @@ class GitAdapter(BaseResourceAdapter):
             config["commit"] = commit
         if remote:
             config["remote"] = remote
-        warnings = [
-            "Repository path is machine-bound; Git state is validation-only."
-        ]
+        warnings = ["Repository path is machine-bound; Git state is validation-only."]
         if branch is None and commit is not None:
             warnings.append("Repository is in detached HEAD state.")
         if status_result.output_truncated:
