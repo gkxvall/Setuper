@@ -2,6 +2,7 @@
 
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,6 +49,25 @@ class CaptureService:
         findings.sort(key=lambda finding: (finding.type_name, finding.identity))
         issues.sort(key=lambda issue: issue.type_name)
         return InspectResult(findings=tuple(findings), issues=tuple(issues))
+
+
+def filter_findings(
+    findings: Sequence[DetectedResource],
+    *,
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+) -> tuple[DetectedResource, ...]:
+    """Filter capture findings by resource-type inclusion and exclusion."""
+    include_types = set(include)
+    excluded_types = set(exclude)
+    selected = (
+        tuple(finding for finding in findings if finding.type_name in include_types)
+        if include_types
+        else tuple(findings)
+    )
+    return tuple(
+        finding for finding in selected if finding.type_name not in excluded_types
+    )
 
 
 def build_capture_context(

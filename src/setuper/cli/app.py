@@ -15,7 +15,11 @@ from setuper.adapters.process import ProcessAdapter
 from setuper.adapters.registry import AdapterRegistry
 from setuper.adapters.vscode import VSCodeAdapter
 from setuper.adapters.window_geometry import WindowGeometryAdapter
-from setuper.application.capture_service import CaptureService, build_capture_context
+from setuper.application.capture_service import (
+    CaptureService,
+    build_capture_context,
+    filter_findings,
+)
 from setuper.application.setup_service import SetupService
 from setuper.cli.json_output import render_json_error, render_json_success
 from setuper.domain.errors import SetuperError
@@ -126,6 +130,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path.cwd(),
         help="project directory (default: current directory)",
     )
+    save_parser = subparsers.add_parser(
+        "save",
+        help="capture the current machine into a new setup",
+    )
+    save_parser.add_argument("name", help="new setup name")
+    save_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview captured resources without saving",
+    )
+    save_parser.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="TYPE",
+        help="capture only this resource type (repeatable)",
+    )
+    save_parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="TYPE",
+        help="omit this resource type (repeatable)",
+    )
     return parser
 
 
@@ -145,6 +173,15 @@ def main(
             return 0
         if arguments.command == "inspect":
             return _run_inspect(json_output=arguments.json, registry=capture_registry)
+        if arguments.command == "save":
+            return _run_save(
+                arguments.name,
+                dry_run=arguments.dry_run,
+                include=arguments.include,
+                exclude=arguments.exclude,
+                paths=paths,
+                registry=capture_registry,
+            )
         if arguments.command == "init":
             return _run_init(arguments.path, paths=paths)
         if arguments.command == "list":
@@ -253,6 +290,58 @@ def _run_inspect(*, json_output: bool, registry: AdapterRegistry | None) -> int:
     if result.issues:
         print("\nUnavailable adapters:")
         for issue in result.issues:
+            print(f"  {issue.type_name}: {issue.message}")
+    return 0
+
+
+def _run_save(
+    name: str,
+    *,
+    dry_run: bool,
+    include: list[str],
+    exclude: list[str],
+    paths: SetuperPaths | None,
+    registry: AdapterRegistry | None,
+) -> int:
+    """Capture the current machine into a new setup, or preview it."""
+    active_registry = registry or _build_capture_registry()
+    capture_result = CaptureService(active_registry).inspect(build_capture_context())
+    selected = filter_findings(
+        capture_result.findings, include=include, exclude=exclude
+    )
+
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        service = SetupService(SetupRepository(connection))
+        if dry_run:
+            manifest = service.build_manifest_from_findings(
+                name,
+                selected,
+                active_registry,
+            )
+            count = len(manifest.resources)
+            print(f"Would save {manifest.name} with {count} resource(s):")
+            for resource in manifest.resources:
+                print(f"  {resource.id} ({resource.type})")
+            return 0
+        result = service.save_setup(
+            name,
+            active_paths.manifest_directory,
+            selected,
+            active_registry,
+        )
+    finally:
+        connection.close()
+    print(
+        f"Saved {result.manifest.name} with {len(result.manifest.resources)} "
+        f"resource(s) at {result.manifest_path}"
+    )
+    if capture_result.issues:
+        print("Some adapters were unavailable during capture:")
+        for issue in capture_result.issues:
             print(f"  {issue.type_name}: {issue.message}")
     return 0
 

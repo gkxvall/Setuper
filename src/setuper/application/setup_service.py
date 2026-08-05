@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
+from setuper.adapters.base import DetectedResource
+from setuper.adapters.registry import AdapterRegistry
 from setuper.domain.enums import LaunchStatus, Platform, SetupSource
 from setuper.domain.errors import (
     DatabaseError,
@@ -100,6 +102,14 @@ class ImportResult:
     manifest: SetupManifest
     manifest_path: Path
     source_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class SaveResult:
+    """New setup captured from selected findings and persisted to storage."""
+
+    manifest: SetupManifest
+    manifest_path: Path
 
 
 class SetupService:
@@ -400,6 +410,68 @@ class SetupService:
             manifest_path=manifest_path,
             source_path=source,
         )
+
+    def build_manifest_from_findings(
+        self,
+        name: str,
+        findings: Sequence[DetectedResource],
+        registry: AdapterRegistry,
+        *,
+        platforms: tuple[Platform, ...] = (Platform.MACOS,),
+    ) -> SetupManifest:
+        """Build a validated in-memory manifest from selected findings."""
+        validated_name = self._require_available_name(name)
+        resources = tuple(
+            registry.get(finding.type_name).capture(finding) for finding in findings
+        )
+        return SetupManifest(
+            name=validated_name,
+            platforms=platforms,
+            resources=resources,
+        )
+
+    def save_setup(
+        self,
+        name: str,
+        manifest_directory: Path,
+        findings: Sequence[DetectedResource],
+        registry: AdapterRegistry,
+        *,
+        platforms: tuple[Platform, ...] = (Platform.MACOS,),
+    ) -> SaveResult:
+        """Capture selected findings into a new, persisted setup manifest."""
+        built = self.build_manifest_from_findings(
+            name,
+            findings,
+            registry,
+            platforms=platforms,
+        )
+        setup_id = self._id_factory()
+        manifest = SetupManifest.model_validate(
+            {**built.model_dump(mode="python"), "id": setup_id}
+        )
+        manifest_path = _managed_manifest_path(manifest_directory, setup_id)
+        if os.path.lexists(manifest_path):
+            raise ManifestValidationError(
+                f"Save destination already exists: {manifest_path}",
+                details={"path": str(manifest_path)},
+            )
+        save_manifest(manifest_path, manifest)
+        timestamp = self._clock()
+        record = SetupRecord(
+            id=setup_id,
+            name=manifest.name,
+            manifest_path=manifest_path,
+            manifest_hash=hash_manifest(manifest_path),
+            source=SetupSource.LOCAL,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        try:
+            self._repository.create(record)
+        except DatabaseError as database_error:
+            _rollback_managed_manifest(manifest_path, database_error)
+        return SaveResult(manifest=manifest, manifest_path=manifest_path)
 
     def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""

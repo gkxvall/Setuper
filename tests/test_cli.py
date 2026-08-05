@@ -16,7 +16,7 @@ from setuper.adapters.registry import AdapterRegistry
 from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
 from setuper.domain.enums import CaptureSupport, LaunchStatus
-from setuper.domain.models import SetupManifest
+from setuper.domain.models import ResourceSpec, SetupManifest
 from setuper.infrastructure.database import connect_database
 from setuper.infrastructure.launch_repository import LaunchRecord, LaunchRepository
 from setuper.infrastructure.manifests import load_manifest, save_manifest
@@ -43,7 +43,7 @@ def test_version_command_uses_package_metadata(
 
 
 class _FakeInspectAdapter:
-    """Detection-only fake adapter that never touches the real machine."""
+    """Detection and capture fake adapter that never touches the real machine."""
 
     def __init__(self, type_name: str, findings: list[DetectedResource]) -> None:
         self.type_name = type_name
@@ -52,6 +52,15 @@ class _FakeInspectAdapter:
     def detect(self, context: CaptureContext) -> list[DetectedResource]:
         """Return the configured findings regardless of context."""
         return self._findings
+
+    def capture(self, resource: DetectedResource) -> ResourceSpec:
+        """Convert one finding into a deterministic minimal resource."""
+        return ResourceSpec(
+            id=f"{self.type_name}-demo",
+            type=self.type_name,
+            description=resource.display_name,
+            config=dict(resource.config),
+        )
 
 
 def test_inspect_command_renders_findings_and_warnings(
@@ -94,6 +103,115 @@ def test_inspect_json_returns_a_stable_envelope(
     assert payload["data"]["findings"][0]["identity"] == "git:/repo"
     assert payload["data"]["findings"][0]["support"] == "machine_bound"
     assert payload["data"]["issues"] == []
+
+
+def _capture_registry_with(*type_findings: tuple[str, str]) -> AdapterRegistry:
+    """Build a registry of fake adapters, one finding per given type name."""
+    return AdapterRegistry(
+        [
+            _FakeInspectAdapter(
+                type_name,
+                [
+                    DetectedResource(
+                        identity=f"{type_name}:{identity}",
+                        type_name=type_name,
+                        display_name=identity,
+                        support=CaptureSupport.SUPPORTED,
+                    )
+                ],
+            )
+            for type_name, identity in type_findings
+        ]
+    )
+
+
+def test_save_dry_run_previews_without_persisting(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry-run save previews captured resources without storing anything."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"))
+
+    assert (
+        main(
+            ["save", "demo", "--dry-run"],
+            paths=paths,
+            capture_registry=registry,
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Would save demo with 1 resource(s):" in output
+    assert "git-demo (git)" in output
+
+    capsys.readouterr()
+    assert main(["list"], paths=paths) == 0
+    assert capsys.readouterr().out == "No setups found.\n"
+
+
+def test_save_command_persists_captured_resources(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A real save stores the captured manifest and registers the setup."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"))
+
+    assert main(["save", "demo"], paths=paths, capture_registry=registry) == 0
+
+    output = capsys.readouterr().out
+    assert "Saved demo with 1 resource(s)" in output
+
+    capsys.readouterr()
+    assert main(["show", "demo"], paths=paths) == 0
+    assert "git-demo" in capsys.readouterr().out
+
+
+def test_save_include_and_exclude_filter_resource_types(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Include restricts capture to given types; exclude removes them."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"), ("docker", "container"))
+
+    assert (
+        main(
+            ["save", "only-git", "--dry-run", "--include", "git"],
+            paths=paths,
+            capture_registry=registry,
+        )
+        == 0
+    )
+    only_git_output = capsys.readouterr().out
+    assert "1 resource(s)" in only_git_output
+    assert "docker-demo" not in only_git_output
+
+    assert (
+        main(
+            ["save", "no-docker", "--dry-run", "--exclude", "docker"],
+            paths=paths,
+            capture_registry=registry,
+        )
+        == 0
+    )
+    no_docker_output = capsys.readouterr().out
+    assert "1 resource(s)" in no_docker_output
+    assert "docker-demo" not in no_docker_output
 
 
 def test_module_entrypoint_supports_version_flag() -> None:
