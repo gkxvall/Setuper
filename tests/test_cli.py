@@ -11,11 +11,17 @@ from uuid import UUID
 
 import pytest
 
-from setuper.adapters.base import CaptureContext, DetectedResource
+from setuper.adapters.base import (
+    CaptureContext,
+    DetectedResource,
+    LaunchResult,
+    ValidationResult,
+)
 from setuper.adapters.registry import AdapterRegistry
 from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
 from setuper.domain.enums import CaptureSupport, LaunchStatus
+from setuper.domain.errors import AdapterUnavailableError
 from setuper.domain.models import ResourceSpec, SetupManifest
 from setuper.infrastructure.database import connect_database
 from setuper.infrastructure.launch_repository import LaunchRecord, LaunchRepository
@@ -353,6 +359,162 @@ def test_diff_returns_not_found_for_unknown_setup(
     registry = _capture_registry_with(("git", "repo"))
 
     assert main(["diff", "missing"], paths=paths, capture_registry=registry) == 4
+
+    assert "ERROR [SETUP_NOT_FOUND]" in capsys.readouterr().err
+
+
+class _FakeLaunchAdapter:
+    """Adapter stub supporting validate() and launch() with configurable outcomes."""
+
+    def __init__(
+        self,
+        type_name: str,
+        *,
+        launch_result: object | None = None,
+        launch_error: Exception | None = None,
+    ) -> None:
+        self.type_name = type_name
+        self._launch_result = launch_result
+        self._launch_error = launch_error
+
+    def validate(self, spec: object, context: object) -> object:
+        """Report every resource as valid."""
+        return ValidationResult(valid=True)
+
+    async def launch(self, spec: object, context: object) -> object:
+        """Return the configured launch result or raise the configured error."""
+        if self._launch_error is not None:
+            raise self._launch_error
+        return self._launch_result
+
+
+def _save_single_resource_setup(
+    name: str,
+    paths: SetuperPaths,
+    resource_type: str = "git",
+) -> None:
+    """Save one setup with exactly one resource of a given type."""
+    save_registry = _capture_registry_with((resource_type, "item"))
+    assert main(["save", name], paths=paths, capture_registry=save_registry) == 0
+
+
+def test_launch_dry_run_previews_the_plan_without_executing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Launch --dry-run renders the plan without running any adapter."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    _save_single_resource_setup("demo", paths)
+    launch_registry = AdapterRegistry(
+        [
+            _FakeLaunchAdapter(
+                "git", launch_result=LaunchResult(status=LaunchStatus.RUNNING)
+            )
+        ]
+    )
+
+    assert (
+        main(
+            ["launch", "demo", "--dry-run"],
+            paths=paths,
+            capture_registry=launch_registry,
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Launch plan (1 resource(s)):" in output
+    assert "git-demo (git)" in output
+
+
+def test_launch_command_runs_and_reports_running(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A successful launch reports its running status with a success exit code."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    _save_single_resource_setup("demo", paths)
+    launch_registry = AdapterRegistry(
+        [
+            _FakeLaunchAdapter(
+                "git",
+                launch_result=LaunchResult(status=LaunchStatus.RUNNING, pid=123),
+            )
+        ]
+    )
+
+    assert main(["launch", "demo"], paths=paths, capture_registry=launch_registry) == 0
+
+    assert "Launch running: demo" in capsys.readouterr().out
+
+
+def test_launch_reports_failure_exit_code_when_a_resource_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A resource whose adapter raises fails the launch with a nonzero exit."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    _save_single_resource_setup("demo", paths)
+    launch_registry = AdapterRegistry(
+        [
+            _FakeLaunchAdapter(
+                "git",
+                launch_error=AdapterUnavailableError("tool not found"),
+            )
+        ]
+    )
+
+    exit_code = main(["launch", "demo"], paths=paths, capture_registry=launch_registry)
+
+    assert exit_code == 6
+    assert "Launch failed: demo" in capsys.readouterr().out
+
+
+def test_launch_rejects_an_untrusted_imported_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An imported setup without an active trust approval cannot be launched."""
+    source = tmp_path / "incoming.yaml"
+    save_manifest(source, SetupManifest(name="incoming"))
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    assert main(["import", str(source)], paths=paths) == 0
+    capsys.readouterr()
+
+    exit_code = main(["launch", "incoming"], paths=paths)
+
+    assert exit_code == 7
+    assert "ERROR [UNTRUSTED_SETUP]" in capsys.readouterr().err
+
+
+def test_launch_returns_not_found_for_unknown_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Launching a setup that does not exist yields the typed not-found exit."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert main(["launch", "missing"], paths=paths) == 4
 
     assert "ERROR [SETUP_NOT_FOUND]" in capsys.readouterr().err
 

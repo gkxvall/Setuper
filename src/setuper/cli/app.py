@@ -1,6 +1,7 @@
 """Root command-line application."""
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,10 +21,14 @@ from setuper.application.capture_service import (
     build_capture_context,
     filter_findings,
 )
+from setuper.application.launch_plan import LaunchPlan, build_launch_plan
+from setuper.application.launch_recorder import LaunchRecorder
+from setuper.application.launch_service import LaunchService
 from setuper.application.setup_service import SetupService
 from setuper.cli.json_output import render_json_error, render_json_success
 from setuper.domain.diff import diff_resources
-from setuper.domain.errors import SetuperError
+from setuper.domain.enums import ExitCode, LaunchStatus, SetupSource
+from setuper.domain.errors import SetuperError, UntrustedSetupError
 from setuper.infrastructure.commands import SubprocessCommandRunner
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.editor import open_editor
@@ -31,7 +36,8 @@ from setuper.infrastructure.launch_repository import LaunchRepository
 from setuper.infrastructure.manifests import serialize_manifest
 from setuper.infrastructure.migrations import MIGRATIONS
 from setuper.infrastructure.paths import SetuperPaths, resolve_paths
-from setuper.infrastructure.setup_repository import SetupRepository
+from setuper.infrastructure.setup_repository import SetupRecord, SetupRepository
+from setuper.infrastructure.trust_repository import TrustRepository
 
 DESCRIPTION = "Capture and restore reproducible work setups."
 
@@ -165,6 +171,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="preview refreshed resources without saving",
     )
+    launch_parser = subparsers.add_parser(
+        "launch",
+        help="launch a stored setup's resources",
+    )
+    launch_parser.add_argument("name", help="stored setup name")
+    launch_parser.add_argument(
+        "--profile",
+        help="named profile supplying variable overrides",
+    )
+    launch_parser.add_argument(
+        "--only",
+        help="comma-separated resource IDs to launch exclusively",
+    )
+    launch_parser.add_argument(
+        "--skip",
+        help="comma-separated resource IDs to omit",
+    )
+    launch_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview the launch plan without running anything",
+    )
     diff_parser = subparsers.add_parser(
         "diff",
         help="compare a stored setup with current machine state",
@@ -206,6 +234,16 @@ def main(
         if arguments.command == "update":
             return _run_update(
                 arguments.name,
+                dry_run=arguments.dry_run,
+                paths=paths,
+                registry=capture_registry,
+            )
+        if arguments.command == "launch":
+            return _run_launch(
+                arguments.name,
+                profile=arguments.profile,
+                only=arguments.only,
+                skip=arguments.skip,
                 dry_run=arguments.dry_run,
                 paths=paths,
                 registry=capture_registry,
@@ -421,6 +459,79 @@ def _run_update(
         for issue in capture_result.issues:
             print(f"  {issue.type_name}: {issue.message}")
     return 0
+
+
+def _run_launch(
+    name: str,
+    *,
+    profile: str | None,
+    only: str | None,
+    skip: str | None,
+    dry_run: bool,
+    paths: SetuperPaths | None,
+    registry: AdapterRegistry | None,
+) -> int:
+    """Launch a stored setup's resources, or preview its launch plan."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    active_registry = registry or _build_capture_registry()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        stored = SetupService(SetupRepository(connection)).show_setup(name)
+        _verify_trust(stored.record, TrustRepository(connection))
+
+        plan = build_launch_plan(
+            stored.manifest,
+            setup_id=stored.record.id,
+            manifest_hash=stored.record.manifest_hash,
+            registry=active_registry,
+            profile=profile,
+            only=_split_ids(only),
+            skip=_split_ids(skip),
+        )
+
+        if dry_run:
+            _render_launch_plan(plan)
+            return 0
+
+        recorder = LaunchRecorder(LaunchRepository(connection))
+        service = LaunchService(active_registry, recorder)
+        status = asyncio.run(service.launch(plan))
+    finally:
+        connection.close()
+
+    print(f"Launch {status.value}: {name}")
+    return 0 if status is LaunchStatus.RUNNING else int(ExitCode.PARTIAL_LAUNCH)
+
+
+def _verify_trust(record: SetupRecord, trust_repository: TrustRepository) -> None:
+    """Reject launching an imported setup without an active trust approval."""
+    if record.source is not SetupSource.IMPORTED:
+        return
+    if trust_repository.active_approval(record.id, record.manifest_hash) is None:
+        raise UntrustedSetupError(
+            f"Setup is untrusted; approve it before launching: {record.name}",
+            details={"setup": record.name},
+        )
+
+
+def _split_ids(value: str | None) -> tuple[str, ...]:
+    """Split a comma-separated resource ID list, ignoring blanks."""
+    if not value:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _render_launch_plan(plan: LaunchPlan) -> None:
+    """Print each planned resource in dependency order without executing it."""
+    print(f"Launch plan ({len(plan.resources)} resource(s)):")
+    for resource_id in plan.graph.order:
+        planned = plan.resource(resource_id)
+        dependencies = ", ".join(plan.graph.dependencies_of(resource_id)) or "-"
+        print(f"  {resource_id} ({planned.spec.type}) depends_on: {dependencies}")
+        if planned.validation_error:
+            print(f"    ! {planned.validation_error}")
 
 
 def _run_diff(
