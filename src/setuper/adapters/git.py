@@ -1,6 +1,5 @@
 """Git repository detection without modifying user work."""
 
-import re
 from pathlib import Path
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
@@ -11,6 +10,7 @@ from setuper.adapters.base import (
     CaptureContext,
     DetectedResource,
 )
+from setuper.adapters.identity import resource_slug
 from setuper.domain.enums import CaptureSupport, Platform
 from setuper.domain.errors import ManifestValidationError, UnsupportedPlatformError
 from setuper.domain.models import ResourceSpec
@@ -114,7 +114,7 @@ class GitAdapter(BaseResourceAdapter):
         metadata["capture_support"] = resource.support.value
         metadata["capture_warnings"] = list(resource.warnings)
         return ResourceSpec(
-            id=f"git-{_resource_slug(Path(root).name)}",
+            id=f"git-{resource_slug(Path(root).name, fallback='repository')}",
             type=self.type_name,
             description=resource.display_name,
             config=dict(resource.config),
@@ -153,9 +153,3 @@ def _redact_remote(remote: str) -> str:
             fragment=parsed.fragment,
         )
     )
-
-
-def _resource_slug(value: str) -> str:
-    """Create a schema-valid stable resource ID suffix."""
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug or "repository"
