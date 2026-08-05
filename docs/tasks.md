@@ -63,7 +63,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement HTTP readiness check.
 - [x] Implement command readiness check.
 - [x] Implement retry and timeout policies.
-- [ ] Implement bounded-concurrency scheduler.
+- [x] Implement bounded-concurrency scheduler.
 - [ ] Implement resource state persistence.
 - [ ] Implement dry-run launch plan.
 - [ ] Implement `launch`.
