@@ -51,7 +51,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement `inspect`.
 - [x] Implement `save` with dry-run.
 - [x] Implement `update`.
-- [ ] Implement `diff`.
+- [x] Implement `diff`.
 
 ## Phase 4 — Launch engine
 
