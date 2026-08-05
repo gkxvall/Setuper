@@ -6,9 +6,20 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from setuper import __version__
+from setuper.adapters.cursor import CursorAdapter
+from setuper.adapters.docker import DockerAdapter
+from setuper.adapters.docker_compose import DockerComposeAdapter
+from setuper.adapters.git import GitAdapter
+from setuper.adapters.macos_app import MacOSAppAdapter
+from setuper.adapters.process import ProcessAdapter
+from setuper.adapters.registry import AdapterRegistry
+from setuper.adapters.vscode import VSCodeAdapter
+from setuper.adapters.window_geometry import WindowGeometryAdapter
+from setuper.application.capture_service import CaptureService, build_capture_context
 from setuper.application.setup_service import SetupService
 from setuper.cli.json_output import render_json_error, render_json_success
 from setuper.domain.errors import SetuperError
+from setuper.infrastructure.commands import SubprocessCommandRunner
 from setuper.infrastructure.database import connect_database, run_migrations
 from setuper.infrastructure.editor import open_editor
 from setuper.infrastructure.launch_repository import LaunchRepository
@@ -30,6 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("version", help="show the installed Setuper version")
+    inspect_parser = subparsers.add_parser(
+        "inspect",
+        help="detect capturable machine resources",
+    )
+    inspect_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a deterministic JSON envelope",
+    )
     list_parser = subparsers.add_parser("list", help="list stored setups")
     list_parser.add_argument(
         "--json",
@@ -113,6 +133,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     paths: SetuperPaths | None = None,
+    capture_registry: AdapterRegistry | None = None,
 ) -> int:
     """Run the Setuper command-line application."""
     parser = build_parser()
@@ -122,6 +143,8 @@ def main(
         if arguments.command == "version":
             print(f"setuper {__version__}")
             return 0
+        if arguments.command == "inspect":
+            return _run_inspect(json_output=arguments.json, registry=capture_registry)
         if arguments.command == "init":
             return _run_init(arguments.path, paths=paths)
         if arguments.command == "list":
@@ -173,6 +196,64 @@ def main(
         return int(error.exit_code)
 
     parser.print_help()
+    return 0
+
+
+def _build_capture_registry() -> AdapterRegistry:
+    """Build the default read-only capture adapter registry."""
+    runner = SubprocessCommandRunner()
+    return AdapterRegistry(
+        [
+            ProcessAdapter(),
+            GitAdapter(runner),
+            DockerAdapter(runner),
+            DockerComposeAdapter(runner),
+            VSCodeAdapter(),
+            CursorAdapter(),
+            MacOSAppAdapter(runner),
+            WindowGeometryAdapter(runner),
+        ]
+    )
+
+
+def _run_inspect(*, json_output: bool, registry: AdapterRegistry | None) -> int:
+    """Detect capturable machine resources without persisting anything."""
+    active_registry = registry or _build_capture_registry()
+    result = CaptureService(active_registry).inspect(build_capture_context())
+    if json_output:
+        print(
+            render_json_success(
+                "inspect",
+                {
+                    "findings": [
+                        {
+                            "type": finding.type_name,
+                            "identity": finding.identity,
+                            "display_name": finding.display_name,
+                            "support": finding.support,
+                            "config": dict(finding.config),
+                            "warnings": list(finding.warnings),
+                        }
+                        for finding in result.findings
+                    ],
+                    "issues": [
+                        {"adapter": issue.type_name, "message": issue.message}
+                        for issue in result.issues
+                    ],
+                },
+            )
+        )
+        return 0
+    if not result.findings:
+        print("No capturable resources found.")
+    for finding in result.findings:
+        print(f"[{finding.type_name}] {finding.display_name} ({finding.support.value})")
+        for warning in finding.warnings:
+            print(f"  ! {warning}")
+    if result.issues:
+        print("\nUnavailable adapters:")
+        for issue in result.issues:
+            print(f"  {issue.type_name}: {issue.message}")
     return 0
 
 

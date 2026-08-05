@@ -11,9 +11,11 @@ from uuid import UUID
 
 import pytest
 
+from setuper.adapters.base import CaptureContext, DetectedResource
+from setuper.adapters.registry import AdapterRegistry
 from setuper.cli import app
 from setuper.cli.app import DESCRIPTION, main
-from setuper.domain.enums import LaunchStatus
+from setuper.domain.enums import CaptureSupport, LaunchStatus
 from setuper.domain.models import SetupManifest
 from setuper.infrastructure.database import connect_database
 from setuper.infrastructure.launch_repository import LaunchRecord, LaunchRepository
@@ -38,6 +40,60 @@ def test_version_command_uses_package_metadata(
 
     output = capsys.readouterr().out
     assert output == f"setuper {version('setuper')}\n"
+
+
+class _FakeInspectAdapter:
+    """Detection-only fake adapter that never touches the real machine."""
+
+    def __init__(self, type_name: str, findings: list[DetectedResource]) -> None:
+        self.type_name = type_name
+        self._findings = findings
+
+    def detect(self, context: CaptureContext) -> list[DetectedResource]:
+        """Return the configured findings regardless of context."""
+        return self._findings
+
+
+def test_inspect_command_renders_findings_and_warnings(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Inspect renders each finding with its support level and warnings."""
+    finding = DetectedResource(
+        identity="git:/repo",
+        type_name="git",
+        display_name="repo",
+        support=CaptureSupport.MACHINE_BOUND,
+        warnings=("Repository path is machine-bound.",),
+    )
+    registry = AdapterRegistry([_FakeInspectAdapter("git", [finding])])
+
+    assert main(["inspect"], capture_registry=registry) == 0
+
+    output = capsys.readouterr().out
+    assert "[git] repo (machine_bound)" in output
+    assert "Repository path is machine-bound." in output
+
+
+def test_inspect_json_returns_a_stable_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Inspect JSON reports findings and unavailable adapters explicitly."""
+    finding = DetectedResource(
+        identity="git:/repo",
+        type_name="git",
+        display_name="repo",
+        support=CaptureSupport.MACHINE_BOUND,
+    )
+    registry = AdapterRegistry([_FakeInspectAdapter("git", [finding])])
+
+    assert main(["inspect", "--json"], capture_registry=registry) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["command"] == "inspect"
+    assert payload["data"]["findings"][0]["identity"] == "git:/repo"
+    assert payload["data"]["findings"][0]["support"] == "machine_bound"
+    assert payload["data"]["issues"] == []
 
 
 def test_module_entrypoint_supports_version_flag() -> None:
