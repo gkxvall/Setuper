@@ -43,7 +43,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement Git detection.
 - [x] Implement Docker detection.
 - [x] Implement Docker Compose detection.
-- [ ] Implement VS Code detection.
+- [x] Implement VS Code detection.
 - [ ] Implement Cursor detection.
 - [ ] Implement basic macOS app detection.
 - [ ] Implement window geometry capture.
