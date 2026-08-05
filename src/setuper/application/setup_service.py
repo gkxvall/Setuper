@@ -112,6 +112,14 @@ class SaveResult:
     manifest_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class UpdateResult:
+    """Existing setup refreshed with newly captured resources."""
+
+    manifest: SetupManifest
+    manifest_path: Path
+
+
 class SetupService:
     """Coordinate setup manifests and their operational metadata."""
 
@@ -472,6 +480,51 @@ class SetupService:
         except DatabaseError as database_error:
             _rollback_managed_manifest(manifest_path, database_error)
         return SaveResult(manifest=manifest, manifest_path=manifest_path)
+
+    def build_updated_manifest(
+        self,
+        name: str,
+        findings: Sequence[DetectedResource],
+        registry: AdapterRegistry,
+    ) -> SetupManifest:
+        """Build a validated in-memory manifest refreshed from new findings."""
+        existing = self.show_setup(name)
+        resources = tuple(
+            registry.get(finding.type_name).capture(finding) for finding in findings
+        )
+        return SetupManifest.model_validate(
+            {**existing.manifest.model_dump(mode="python"), "resources": resources}
+        )
+
+    def update_setup(
+        self,
+        name: str,
+        findings: Sequence[DetectedResource],
+        registry: AdapterRegistry,
+    ) -> UpdateResult:
+        """Refresh an existing setup's resources from newly captured findings."""
+        original = self.show_setup(name)
+        resources = tuple(
+            registry.get(finding.type_name).capture(finding) for finding in findings
+        )
+        updated = SetupManifest.model_validate(
+            {**original.manifest.model_dump(mode="python"), "resources": resources}
+        )
+        save_manifest(original.record.manifest_path, updated)
+        updated_record = replace(
+            original.record,
+            manifest_hash=hash_manifest(original.record.manifest_path),
+            updated_at=self._clock(),
+        )
+        try:
+            self._repository.update(updated_record)
+        except DatabaseError:
+            save_manifest(original.record.manifest_path, original.manifest)
+            raise
+        return UpdateResult(
+            manifest=updated,
+            manifest_path=original.record.manifest_path,
+        )
 
     def _require_available_name(self, name: str) -> str:
         """Reject an invalid or already stored setup name."""

@@ -214,6 +214,86 @@ def test_save_include_and_exclude_filter_resource_types(
     assert "docker-demo" not in no_docker_output
 
 
+def test_update_dry_run_previews_without_persisting(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry-run update previews refreshed resources without saving them."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    initial_registry = _capture_registry_with(("git", "repo"))
+    assert main(["save", "demo"], paths=paths, capture_registry=initial_registry) == 0
+    capsys.readouterr()
+
+    refreshed_registry = _capture_registry_with(
+        ("git", "repo"), ("docker", "container")
+    )
+    assert (
+        main(
+            ["update", "demo", "--dry-run"],
+            paths=paths,
+            capture_registry=refreshed_registry,
+        )
+        == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Would update demo to 2 resource(s):" in output
+
+    capsys.readouterr()
+    assert main(["show", "demo"], paths=paths) == 0
+    assert "docker-demo" not in capsys.readouterr().out
+
+
+def test_update_command_refreshes_stored_resources(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A real update replaces the stored resource list from fresh capture."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    initial_registry = _capture_registry_with(("git", "repo"))
+    assert main(["save", "demo"], paths=paths, capture_registry=initial_registry) == 0
+    capsys.readouterr()
+
+    refreshed_registry = _capture_registry_with(("docker", "container"))
+    assert (
+        main(["update", "demo"], paths=paths, capture_registry=refreshed_registry) == 0
+    )
+
+    output = capsys.readouterr().out
+    assert "Updated demo to 1 resource(s)" in output
+
+    capsys.readouterr()
+    assert main(["show", "demo"], paths=paths) == 0
+    show_output = capsys.readouterr().out
+    assert "docker-demo" in show_output
+    assert "git-demo" not in show_output
+
+
+def test_update_returns_not_found_for_unknown_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Updating a setup that does not exist yields the typed not-found exit."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"))
+
+    assert main(["update", "missing"], paths=paths, capture_registry=registry) == 4
+
+    assert "ERROR [SETUP_NOT_FOUND]" in capsys.readouterr().err
+
+
 def test_module_entrypoint_supports_version_flag() -> None:
     """The Python module entry point exposes the root version flag."""
     result = subprocess.run(

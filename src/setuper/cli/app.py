@@ -154,6 +154,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TYPE",
         help="omit this resource type (repeatable)",
     )
+    update_parser = subparsers.add_parser(
+        "update",
+        help="refresh a stored setup from current machine state",
+    )
+    update_parser.add_argument("name", help="stored setup name")
+    update_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview refreshed resources without saving",
+    )
     return parser
 
 
@@ -179,6 +189,13 @@ def main(
                 dry_run=arguments.dry_run,
                 include=arguments.include,
                 exclude=arguments.exclude,
+                paths=paths,
+                registry=capture_registry,
+            )
+        if arguments.command == "update":
+            return _run_update(
+                arguments.name,
+                dry_run=arguments.dry_run,
                 paths=paths,
                 registry=capture_registry,
             )
@@ -337,6 +354,48 @@ def _run_save(
         connection.close()
     print(
         f"Saved {result.manifest.name} with {len(result.manifest.resources)} "
+        f"resource(s) at {result.manifest_path}"
+    )
+    if capture_result.issues:
+        print("Some adapters were unavailable during capture:")
+        for issue in capture_result.issues:
+            print(f"  {issue.type_name}: {issue.message}")
+    return 0
+
+
+def _run_update(
+    name: str,
+    *,
+    dry_run: bool,
+    paths: SetuperPaths | None,
+    registry: AdapterRegistry | None,
+) -> int:
+    """Refresh a stored setup's resources from the current machine, or preview it."""
+    active_registry = registry or _build_capture_registry()
+    capture_result = CaptureService(active_registry).inspect(build_capture_context())
+
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        service = SetupService(SetupRepository(connection))
+        if dry_run:
+            manifest = service.build_updated_manifest(
+                name,
+                capture_result.findings,
+                active_registry,
+            )
+            count = len(manifest.resources)
+            print(f"Would update {manifest.name} to {count} resource(s):")
+            for resource in manifest.resources:
+                print(f"  {resource.id} ({resource.type})")
+            return 0
+        result = service.update_setup(name, capture_result.findings, active_registry)
+    finally:
+        connection.close()
+    print(
+        f"Updated {result.manifest.name} to {len(result.manifest.resources)} "
         f"resource(s) at {result.manifest_path}"
     )
     if capture_result.issues:
