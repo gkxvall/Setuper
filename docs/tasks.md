@@ -57,7 +57,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 
 - [x] Implement variable resolution.
 - [x] Implement profile merging.
-- [ ] Implement dependency graph and cycle errors.
+- [x] Implement dependency graph and cycle errors.
 - [ ] Implement subprocess supervisor.
 - [ ] Implement TCP readiness check.
 - [ ] Implement HTTP readiness check.
