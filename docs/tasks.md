@@ -50,7 +50,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement browser integration protocol.
 - [x] Implement `inspect`.
 - [x] Implement `save` with dry-run.
-- [ ] Implement `update`.
+- [x] Implement `update`.
 - [ ] Implement `diff`.
 
 ## Phase 4 — Launch engine
