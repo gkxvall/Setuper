@@ -48,7 +48,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement basic macOS app detection.
 - [x] Implement window geometry capture.
 - [x] Implement browser integration protocol.
-- [ ] Implement `inspect`.
+- [x] Implement `inspect`.
 - [ ] Implement `save` with dry-run.
 - [ ] Implement `update`.
 - [ ] Implement `diff`.
