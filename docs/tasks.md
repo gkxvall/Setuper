@@ -66,7 +66,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement bounded-concurrency scheduler.
 - [x] Implement resource state persistence.
 - [x] Implement dry-run launch plan.
-- [ ] Implement `launch`.
+- [x] Implement `launch`.
 
 ## Phase 5 — Built-in launch adapters
 
