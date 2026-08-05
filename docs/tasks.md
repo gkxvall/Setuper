@@ -59,9 +59,9 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement profile merging.
 - [x] Implement dependency graph and cycle errors.
 - [x] Implement subprocess supervisor.
-- [ ] Implement TCP readiness check.
-- [ ] Implement HTTP readiness check.
-- [ ] Implement command readiness check.
+- [x] Implement TCP readiness check.
+- [x] Implement HTTP readiness check.
+- [x] Implement command readiness check.
 - [ ] Implement retry and timeout policies.
 - [ ] Implement bounded-concurrency scheduler.
 - [ ] Implement resource state persistence.
