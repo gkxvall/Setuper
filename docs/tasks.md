@@ -41,7 +41,7 @@ Codex must complete tasks in order. Each checkbox should produce one or more sma
 - [x] Implement process detection.
 - [x] Implement listening-port detection.
 - [x] Implement Git detection.
-- [ ] Implement Docker detection.
+- [x] Implement Docker detection.
 - [ ] Implement Docker Compose detection.
 - [ ] Implement VS Code detection.
 - [ ] Implement Cursor detection.
