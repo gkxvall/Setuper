@@ -22,6 +22,7 @@ from setuper.application.capture_service import (
 )
 from setuper.application.setup_service import SetupService
 from setuper.cli.json_output import render_json_error, render_json_success
+from setuper.domain.diff import diff_resources
 from setuper.domain.errors import SetuperError
 from setuper.infrastructure.commands import SubprocessCommandRunner
 from setuper.infrastructure.database import connect_database, run_migrations
@@ -164,6 +165,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="preview refreshed resources without saving",
     )
+    diff_parser = subparsers.add_parser(
+        "diff",
+        help="compare a stored setup with current machine state",
+    )
+    diff_parser.add_argument("name", help="stored setup name")
+    diff_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a deterministic JSON envelope",
+    )
     return parser
 
 
@@ -196,6 +207,13 @@ def main(
             return _run_update(
                 arguments.name,
                 dry_run=arguments.dry_run,
+                paths=paths,
+                registry=capture_registry,
+            )
+        if arguments.command == "diff":
+            return _run_diff(
+                arguments.name,
+                json_output=arguments.json,
                 paths=paths,
                 registry=capture_registry,
             )
@@ -402,6 +420,55 @@ def _run_update(
         print("Some adapters were unavailable during capture:")
         for issue in capture_result.issues:
             print(f"  {issue.type_name}: {issue.message}")
+    return 0
+
+
+def _run_diff(
+    name: str,
+    *,
+    json_output: bool,
+    paths: SetuperPaths | None,
+    registry: AdapterRegistry | None,
+) -> int:
+    """Compare a stored setup's resources with a fresh capture pass."""
+    active_paths = paths or resolve_paths()
+    active_paths.ensure_directories()
+    connection = connect_database(active_paths.database_path)
+    try:
+        run_migrations(connection, MIGRATIONS)
+        stored = SetupService(SetupRepository(connection)).show_setup(name)
+    finally:
+        connection.close()
+
+    active_registry = registry or _build_capture_registry()
+    capture_result = CaptureService(active_registry).inspect(build_capture_context())
+    current_resources = tuple(
+        active_registry.get(finding.type_name).capture(finding)
+        for finding in capture_result.findings
+    )
+    diff = diff_resources(stored.manifest.resources, current_resources)
+
+    if json_output:
+        print(
+            render_json_success(
+                "diff",
+                {
+                    "entries": [
+                        {
+                            "resource_id": entry.resource_id,
+                            "type": entry.type_name,
+                            "status": entry.status,
+                        }
+                        for entry in diff.entries
+                    ],
+                },
+            )
+        )
+        return 0
+    if not diff.entries:
+        print("No resources to compare.")
+    for entry in diff.entries:
+        print(f"[{entry.status}] {entry.resource_id} ({entry.type_name})")
     return 0
 
 

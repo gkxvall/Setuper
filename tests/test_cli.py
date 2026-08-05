@@ -294,6 +294,69 @@ def test_update_returns_not_found_for_unknown_setup(
     assert "ERROR [SETUP_NOT_FOUND]" in capsys.readouterr().err
 
 
+def test_diff_command_reports_unchanged_and_added_resources(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Diff compares a stored setup against a fresh full capture pass."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    save_registry = _capture_registry_with(("git", "repo"))
+    assert main(["save", "demo"], paths=paths, capture_registry=save_registry) == 0
+    capsys.readouterr()
+
+    diff_registry = _capture_registry_with(("git", "repo"), ("docker", "container"))
+    assert main(["diff", "demo"], paths=paths, capture_registry=diff_registry) == 0
+
+    output = capsys.readouterr().out
+    assert "[unchanged] git-demo (git)" in output
+    assert "[added] docker-demo (docker)" in output
+
+
+def test_diff_json_returns_a_stable_envelope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Diff JSON reports each resource's comparison status explicitly."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"))
+    assert main(["save", "demo"], paths=paths, capture_registry=registry) == 0
+    capsys.readouterr()
+
+    assert main(["diff", "demo", "--json"], paths=paths, capture_registry=registry) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["command"] == "diff"
+    assert payload["data"]["entries"] == [
+        {"resource_id": "git-demo", "type": "git", "status": "unchanged"}
+    ]
+
+
+def test_diff_returns_not_found_for_unknown_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Diffing a setup that does not exist yields the typed not-found exit."""
+    paths = SetuperPaths(
+        data_directory=tmp_path / "data",
+        log_directory=tmp_path / "logs",
+        cache_directory=tmp_path / "cache",
+    )
+    registry = _capture_registry_with(("git", "repo"))
+
+    assert main(["diff", "missing"], paths=paths, capture_registry=registry) == 4
+
+    assert "ERROR [SETUP_NOT_FOUND]" in capsys.readouterr().err
+
+
 def test_module_entrypoint_supports_version_flag() -> None:
     """The Python module entry point exposes the root version flag."""
     result = subprocess.run(
