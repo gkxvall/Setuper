@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from setuper.adapters.base import LaunchContext
+from setuper.adapters.base import LaunchContext, LaunchResult
 from setuper.adapters.registry import AdapterRegistry
 from setuper.application.launch_plan import LaunchPlan, PlannedResource
 from setuper.application.launch_recorder import LaunchRecorder, ResourceOutcome
@@ -71,7 +71,7 @@ class LaunchService:
         """Launch one resource, wait for its readiness, and record the outcome."""
         spec = planned.spec
 
-        async def attempt() -> int | None:
+        async def attempt() -> LaunchResult:
             adapter = self._registry.get(spec.type)
             result = await adapter.launch(
                 spec,
@@ -85,10 +85,10 @@ class LaunchService:
                     timeout_seconds=spec.timeout_seconds,
                     runner=self._command_runner,
                 )
-            return result.pid
+            return result
 
         try:
-            pid = await run_with_retry(
+            result = await run_with_retry(
                 attempt,
                 retry=spec.retry,
                 timeout_seconds=spec.timeout_seconds,
@@ -106,6 +106,10 @@ class LaunchService:
 
         self._recorder.record_resource_outcome(
             spec.id,
-            ResourceOutcome(status=ResourceRunStatus.READY, pid=pid),
+            ResourceOutcome(
+                status=ResourceRunStatus.READY,
+                pid=result.pid,
+                external_id=result.external_id,
+            ),
         )
         return ResourceRunStatus.READY

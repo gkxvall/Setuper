@@ -72,10 +72,12 @@ class LaunchResult:
 
 @dataclass(frozen=True, slots=True)
 class StatusContext:
-    """Identifiers available to adapter status checks."""
+    """Identifiers and last-known ownership available to adapter status checks."""
 
     setup_id: UUID
     launch_id: UUID
+    pid: int | None = None
+    external_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,10 +90,12 @@ class ResourceStatus:
 
 @dataclass(frozen=True, slots=True)
 class StopContext:
-    """Identifiers and force policy supplied to a stop adapter."""
+    """Identifiers, last-known ownership, and force policy for a stop adapter."""
 
     setup_id: UUID
     launch_id: UUID
+    pid: int | None = None
+    external_id: str | None = None
     force: bool = False
 
 
