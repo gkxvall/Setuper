@@ -22,3 +22,13 @@ and Setuper follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Project initialization plus list, show, edit, clone, rename, safe delete,
   import, and export setup lifecycle commands.
 - Deterministic JSON success and error envelopes for setup listing and display.
+- Adapter interfaces and registry, plus process, listening-port, Git, Docker,
+  Docker Compose, VS Code, Cursor, basic macOS application, and window
+  geometry detection.
+- A browser integration protocol and adapter for capturing open tabs.
+- `inspect`, `save` with dry-run, `update`, and `diff` capture commands.
+- Variable resolution, profile merging, dependency graph and cycle errors,
+  an async subprocess supervisor, TCP/HTTP/command readiness checks, retry
+  and timeout policies, a bounded-concurrency scheduler, resource state
+  persistence, and a dry-run launch plan.
+- The `launch` command executing a full launch plan end to end.
