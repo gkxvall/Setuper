@@ -1,6 +1,7 @@
 """Integration tests for TCP, HTTP, and command readiness checks."""
 
 import asyncio
+import contextlib
 import http.server
 import socket
 import threading
@@ -50,11 +51,26 @@ def http_server() -> Iterator[int]:
         thread.join()
 
 
+async def _close_accepted_connection(
+    _reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+) -> None:
+    """Close each accepted connection so the server can shut down cleanly.
+
+    Python 3.12 changed `Server.wait_closed()` to also wait for every
+    connection the server has accepted, not just its listening socket. An
+    accepted connection left open by the callback would make `wait_closed()`
+    hang forever.
+    """
+    writer.close()
+    with contextlib.suppress(OSError):
+        await writer.wait_closed()
+
+
 def test_tcp_readiness_succeeds_against_a_listening_server() -> None:
     """A TCP check succeeds once a listener is accepting connections."""
 
     async def scenario() -> None:
-        server = await asyncio.start_server(lambda r, w: None, "127.0.0.1", 0)
+        server = await asyncio.start_server(_close_accepted_connection, "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         try:
             spec = TcpReadinessSpec(host="127.0.0.1", port=port)

@@ -1,6 +1,7 @@
 """Integration tests for full launch-plan execution and state persistence."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -21,6 +22,19 @@ from setuper.infrastructure.migrations import MIGRATIONS
 
 SETUP_ID = uuid4()
 STARTED_AT = datetime(2026, 7, 29, 12, tzinfo=UTC)
+
+
+async def _close_accepted_connection(
+    _reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+) -> None:
+    """Close each accepted connection so the server can shut down cleanly.
+
+    Python 3.12 changed `Server.wait_closed()` to also wait for every
+    connection the server has accepted, not just its listening socket.
+    """
+    writer.close()
+    with contextlib.suppress(OSError):
+        await writer.wait_closed()
 
 
 class _FakeLaunchAdapter:
@@ -120,7 +134,7 @@ def test_launch_waits_for_tcp_readiness_before_marking_ready(tmp_path: Path) -> 
     """A resource with a readiness spec only becomes READY once it responds."""
 
     async def scenario() -> None:
-        server = await asyncio.start_server(lambda r, w: None, "127.0.0.1", 0)
+        server = await asyncio.start_server(_close_accepted_connection, "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         try:
             repository = _repository(tmp_path)
